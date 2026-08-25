@@ -7,7 +7,7 @@ from typing import Any
 import networkx as nx
 
 from .errors import AlgorithmInputError
-from .graph import build_nx_graph, normalize_graph
+from .graph import build_nx_graph, coerce_finite_float, normalize_graph
 from .results import chart, overlay, table
 
 
@@ -19,9 +19,10 @@ def _initial_opinions(network: nx.Graph | nx.DiGraph, params: dict[str, Any]) ->
     opinions: dict[Any, float] = {}
     for index, node in enumerate(nodes):
         value = supplied.get(str(node), index / max(1, len(nodes) - 1))
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= float(value) <= 1:
+        converted = coerce_finite_float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
+        if converted is None or not 0 <= converted <= 1:
             raise AlgorithmInputError(f"节点 '{node}' 的意见必须在 0–1 之间。", path=f"parameters.opinions.{node}")
-        opinions[node] = float(value)
+        opinions[node] = converted
     return opinions
 
 

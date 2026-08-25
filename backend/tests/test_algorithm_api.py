@@ -58,6 +58,23 @@ def test_run_api_handles_huge_numeric_parameter_without_500(api_client):
     assert "有限数值" in response.json()["error"]["message"]
 
 
+@pytest.mark.django_db
+def test_run_api_handles_huge_nested_opinion_value_without_500(api_client):
+    response = api_client.post("/api/runs/", {
+        "algorithm": "opinion.degroot",
+        "graph": PATH3,
+        "parameters": {"opinions": {"a": 10 ** 400}},
+        "seed": 1,
+    }, format="json")
+
+    assert response.status_code == 400
+    assert response.json()["error"] == {
+        "code": "invalid_input",
+        "message": "节点 'a' 的意见必须在 0–1 之间。",
+        "path": "parameters.opinions.a",
+    }
+
+
 def test_registry_api_preserves_foundation_fields_and_adds_complete_teaching_metadata(api_client):
     response = api_client.get("/api/algorithms/")
     first = response.json()[0]

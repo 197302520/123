@@ -226,6 +226,34 @@ def test_community_methods_find_two_dense_groups_reproducibly(algorithm):
     assert first["overlays"][0]["node_styles"]
 
 
+@pytest.mark.parametrize("algorithm", [
+    "community.kernighan_lin", "community.agglomerative", "community.divisive",
+    "community.girvan_newman", "community.fast_newman", "community.louvain", "community.lpa",
+])
+def test_classical_community_methods_preserve_exact_partition_and_modularity_invariants(algorithm):
+    result = execute_algorithm(algorithm, TWO_TRIANGLES, {}, seed=7)
+    rows = table_rows(result, "communities")
+    partition = {
+        frozenset(row["node"] for row in rows if row["community"] == community)
+        for community in {row["community"] for row in rows}
+    }
+
+    assert partition == {frozenset({"a", "b", "c"}), frozenset({"d", "e", "f"})}
+    assert all(row["memberships"] == [row["community"]] for row in rows)
+    assert result["provenance"]["overlapping"] is False
+    assert result["provenance"]["modularity"] == pytest.approx(0.467741935483871)
+
+
+def test_hierarchical_community_methods_return_hand_checkable_steps():
+    agglomerative = execute_algorithm("community.agglomerative", TWO_TRIANGLES, {}, seed=7)
+    divisive = execute_algorithm("community.divisive", TWO_TRIANGLES, {}, seed=7)
+
+    assert len(table_rows(agglomerative, "hierarchy")) == 4
+    assert table_rows(divisive, "hierarchy") == [{
+        "step": 1, "source": "c", "target": "d", "edge_betweenness": pytest.approx(0.6),
+    }]
+
+
 def test_cpm_clique_percolation_preserves_overlapping_bridge_membership():
     bow_tie = graph(
         ["a", "b", "c", "d", "e"],
@@ -349,6 +377,15 @@ def test_opinion_registry_only_exposes_effective_model_parameters_and_graph_type
         execute_algorithm("opinion.degroot", PATH3, {"stubbornness": 0.5}, seed=1)
     with pytest.raises(AlgorithmInputError, match="无向图"):
         execute_algorithm("opinion.deffuant", graph(["a", "b"], [("a", "b", 1)], directed=True), {}, seed=1)
+
+
+def test_huge_nested_opinion_value_returns_stable_input_error_instead_of_overflowing():
+    with pytest.raises(AlgorithmInputError) as exc:
+        execute_algorithm("opinion.degroot", PATH3, {"opinions": {"a": 10 ** 400}}, seed=1)
+
+    assert exc.value.code == "invalid_input"
+    assert exc.value.path == "parameters.opinions.a"
+    assert "0–1" in str(exc.value)
 
 
 def test_dynamic_community_matching_emits_birth_death_split_merge_and_continuation():
