@@ -1,23 +1,27 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { fetchModules } from './api/client'
-import type { CourseModule } from './api/contracts'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
+import AppFooter from './components/AppFooter.vue'
 
-const modules = ref<CourseModule[]>([])
-const error = ref('')
-
-onMounted(async () => {
-  try { modules.value = await fetchModules() } catch (reason) { error.value = reason instanceof Error ? reason.message : '无法加载课程模块。' }
-})
+const route = useRoute()
+const presentation = computed(() => route.meta.presentation === true)
 </script>
 
 <template>
-  <main>
-    <h1>社会网络教学平台</h1>
-    <p>面向案例的社会网络分析学习空间。</p>
-    <p v-if="error" role="alert">{{ error }}</p>
-    <ul v-else>
-      <li v-for="module in modules" :key="module.slug"><strong>{{ module.title }}</strong>：{{ module.summary }}</li>
-    </ul>
+  <a class="skip-link" href="#main-content">跳到主要内容</a>
+  <header v-if="!presentation" class="site-header">
+    <RouterLink class="wordmark" to="/" aria-label="关系研习室首页">
+      <span class="wordmark-mark" aria-hidden="true">关系</span>
+      <span>社会网络分析研习室<small>CASE · METHOD · EVIDENCE</small></span>
+    </RouterLink>
+    <nav aria-label="主要导航">
+      <RouterLink to="/courses">课程</RouterLink>
+      <RouterLink to="/cases">案例</RouterLink>
+      <RouterLink class="nav-lab" to="/lab">自由实验室</RouterLink>
+    </nav>
+  </header>
+  <main id="main-content" :class="{ 'presentation-main': presentation }">
+    <RouterView />
   </main>
+  <AppFooter v-if="!presentation" />
 </template>
