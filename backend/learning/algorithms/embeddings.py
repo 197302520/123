@@ -26,8 +26,13 @@ def _adjacency(graph: dict[str, Any]) -> tuple[list[Any], np.ndarray]:
 
 def _kmeans(values: np.ndarray, clusters: int, seed: int | None, max_iterations: int = 100) -> tuple[np.ndarray, int]:
     n = len(values)
+    if not np.isfinite(values).all():
+        raise AlgorithmInputError("嵌入向量必须全部是有限数值。", path="embeddings")
     if not 1 <= clusters <= n:
         raise AlgorithmInputError(f"clusters 必须在 1–{n} 之间。", path="parameters.clusters")
+    distinct = np.unique(values, axis=0)
+    if clusters > len(distinct):
+        raise AlgorithmInputError(f"聚类数 {clusters} 超过不同嵌入向量数 {len(distinct)}。", path="parameters.clusters")
     rng = np.random.default_rng(seed)
     first = int(rng.integers(0, n))
     indices = [first]
@@ -44,13 +49,21 @@ def _kmeans(values: np.ndarray, clusters: int, seed: int | None, max_iterations:
         for cluster in range(clusters):
             if not np.any(updated == cluster):
                 nearest = np.min(distances, axis=1)
-                candidate = int(np.argmax(nearest))
+                counts = np.bincount(updated, minlength=clusters)
+                donors = np.flatnonzero(counts[updated] > 1)
+                if not len(donors):
+                    raise AlgorithmInputError("无法在不清空已有聚类的前提下修复空聚类。", code="algorithm_failure")
+                candidate = int(donors[np.argmax(nearest[donors])])
                 updated[candidate] = cluster
         new_centroids = np.stack([values[updated == cluster].mean(axis=0) for cluster in range(clusters)])
         if np.array_equal(labels, updated) and np.allclose(centroids, new_centroids):
             labels = updated
+            if set(labels.tolist()) != set(range(clusters)):
+                raise AlgorithmInputError("聚类修复后仍存在空聚类。", code="algorithm_failure")
             return labels, iteration
         labels, centroids = updated, new_centroids
+    if set(labels.tolist()) != set(range(clusters)):
+        raise AlgorithmInputError("聚类迭代结束后仍存在空聚类。", code="algorithm_failure")
     return labels, max_iterations
 
 

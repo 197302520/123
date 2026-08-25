@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import random
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any
 
 import networkx as nx
@@ -117,6 +117,8 @@ def run_opinion(key: str, graph: dict[str, Any], params: dict[str, Any], seed: i
     }
 
 def _parse_partition(values: list[Any], nodes: set[str]) -> list[set[str]]:
+    if not isinstance(values, list):
+        raise AlgorithmInputError("每个快照的社区分区必须是数组。", path="parameters.snapshot_communities")
     result: list[set[str]] = []
     for value in values:
         if isinstance(value, str):
@@ -130,6 +132,13 @@ def _parse_partition(values: list[Any], nodes: set[str]) -> list[set[str]]:
             raise AlgorithmInputError(f"快照社区包含不存在的节点：{sorted(unknown)}。", path="parameters.snapshot_communities")
         if group:
             result.append(group)
+    counts = Counter(node for group in result for node in group)
+    duplicated = sorted(node for node, count in counts.items() if count > 1)
+    if duplicated:
+        raise AlgorithmInputError(f"快照社区中的节点重复归属：{duplicated}。", path="parameters.snapshot_communities")
+    missing = sorted(nodes - set(counts))
+    if missing:
+        raise AlgorithmInputError(f"快照社区分区缺少节点：{missing}。", path="parameters.snapshot_communities")
     return sorted(result, key=lambda group: tuple(sorted(group)))
 
 
@@ -146,11 +155,23 @@ def _jaccard(left: set[str], right: set[str]) -> float:
     return len(left & right) / len(left | right) if left | right else 0.0
 
 
-def run_dynamic(graph: dict[str, Any], params: dict[str, Any], seed: int | None) -> dict[str, Any]:
+def run_dynamic(graph: dict[str, Any], params: dict[str, Any], seed: int | None, limits: dict[str, int]) -> dict[str, Any]:
     raw_snapshots = params.get("snapshots") or [graph]
     if not isinstance(raw_snapshots, list) or not raw_snapshots:
         raise AlgorithmInputError("snapshots 必须是非空图数组。", path="parameters.snapshots")
-    snapshots = [normalize_graph(snapshot) for snapshot in raw_snapshots]
+    snapshots = []
+    for index, raw_snapshot in enumerate(raw_snapshots):
+        try:
+            snapshot = normalize_graph(raw_snapshot)
+        except AlgorithmInputError as exc:
+            raise AlgorithmInputError(str(exc), code=exc.code, path=f"parameters.snapshots[{index}].{exc.path}") from exc
+        if snapshot["directed"]:
+            raise AlgorithmInputError("动态社区快照仅支持无向图。", code="unsupported_graph_type", path=f"parameters.snapshots[{index}].directed")
+        if len(snapshot["nodes"]) > limits["max_nodes"]:
+            raise AlgorithmInputError(f"动态社区每个快照最多支持 {limits['max_nodes']} 个节点。", code="limit_exceeded", path=f"parameters.snapshots[{index}].nodes")
+        if len(snapshot["edges"]) > limits["max_edges"]:
+            raise AlgorithmInputError(f"动态社区每个快照最多支持 {limits['max_edges']} 条边。", code="limit_exceeded", path=f"parameters.snapshots[{index}].edges")
+        snapshots.append(snapshot)
     supplied = params.get("snapshot_communities") or []
     if supplied and (not isinstance(supplied, list) or len(supplied) != len(snapshots)):
         raise AlgorithmInputError("snapshot_communities 必须与 snapshots 等长。", path="parameters.snapshot_communities")

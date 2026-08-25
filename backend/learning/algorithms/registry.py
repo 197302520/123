@@ -80,10 +80,11 @@ for key, name, formula, explanation, advantages, limitations in [
     ("centrality.eigenvector", "特征向量中心性", "Ax=λx", "与高分节点相连会获得更高分数。", ["考虑邻居质量"], ["非连通图可集中于主分量"]),
     ("centrality.pagerank", "PageRank", "r=αP^T r+(1-α)/n", "用随机游走稳态概率衡量影响力。", ["适用有向网络且抗死端"], ["结果受阻尼系数影响"]),
     ("centrality.hits", "HITS 枢纽-权威", "a=A^T h, h=Aa", "同时估计权威值与枢纽值。", ["区分引用与被引用角色"], ["对紧密子图敏感"]),
-    ("centralization.degree", "度中心势", "C_D=Σ_i(C_D^*-C_D(i))/max", "衡量整体网络围绕最中心节点的程度。", ["便于跨网络比较"], ["不描述多中心结构"]),
+    ("centralization.degree", "度中心势", "C_D=Σ_i(C_D^*-C_D(i))/[(n-1)(n-2)]", "在无向图上衡量整体网络围绕最中心节点的程度。", ["便于跨无向网络比较"], ["不适用有向入度/出度语义"]),
 ]:
     params = {"alpha": parameter("number", 0.85, "阻尼系数。", minimum=0, maximum=1), **ITERATION_PARAMETERS} if key == "centrality.pagerank" else (ITERATION_PARAMETERS if key in {"centrality.eigenvector", "centrality.hits"} else {})
-    ALGORITHM_REGISTRY.append(spec(key, name, formula, explanation, advantages, limitations, parameters=params))
+    graph_types = ["undirected"] if key == "centralization.degree" else None
+    ALGORITHM_REGISTRY.append(spec(key, name, formula, explanation, advantages, limitations, parameters=params, graph_types=graph_types))
 
 
 community_metadata = [
@@ -136,15 +137,21 @@ opinion_specs = [
     ("opinion.hk", "Hegselmann–Krause", "x_i(t+1)=mean{x_j:|x_j-x_i|≤ε}", "同步平均有界信任邻居的意见。", ["簇形成过程直观"], ["同步更新是强假设"]),
 ]
 for key, name, formula, explanation, advantages, limitations in opinion_specs:
-    params = {
-        "opinions": parameter("object", {}, "节点初始意见（0–1）。"),
-        **ITERATION_PARAMETERS,
-        "confidence": parameter("number", 0.3, "有界信任阈值。", minimum=0, maximum=1),
-        "stubbornness": parameter("number", 0.3, "FJ 固执度。", minimum=0, maximum=1),
-        "mu": parameter("number", 0.5, "Deffuant 妥协速率。", minimum=0, maximum=0.5),
-        "steps": parameter("integer", 500, "Deffuant 交互次数。", minimum=1, maximum=100_000),
-    }
-    ALGORITHM_REGISTRY.append(spec(key, name, formula, explanation, advantages, limitations, parameters=params, max_nodes=2_000))
+    params = {"opinions": parameter("object", {}, "节点初始意见（0–1）。")}
+    if key in {"opinion.degroot", "opinion.friedkin_johnsen", "opinion.hk"}:
+        params.update(ITERATION_PARAMETERS)
+    if key == "opinion.friedkin_johnsen":
+        params["stubbornness"] = parameter("number", 0.3, "FJ 固执度。", minimum=0, maximum=1)
+    if key in {"opinion.deffuant", "opinion.hk"}:
+        params["confidence"] = parameter("number", 0.3, "有界信任阈值。", minimum=0, maximum=1)
+    if key == "opinion.deffuant":
+        params.update({
+            "tolerance": deepcopy(ITERATION_PARAMETERS["tolerance"]),
+            "mu": parameter("number", 0.5, "Deffuant 妥协速率。", minimum=0, maximum=0.5),
+            "steps": parameter("integer", 500, "Deffuant 交互次数。", minimum=1, maximum=100_000),
+        })
+    graph_types = ["undirected"] if key == "opinion.deffuant" else None
+    ALGORITHM_REGISTRY.append(spec(key, name, formula, explanation, advantages, limitations, graph_types=graph_types, parameters=params, max_nodes=2_000))
 
 
 ALGORITHM_REGISTRY.extend([
@@ -153,7 +160,7 @@ ALGORITHM_REGISTRY.extend([
     spec("embedding.cnn", "CNN 卷积嵌入聚类", "Z=pool(ReLU(X*K)), X̂=ZW_d", "在 CPU 上训练一维卷积邻接重构器，再对嵌入聚类。", ["捕捉邻接序列的局部模式"], ["对节点排序敏感"], graph_types=["undirected"], parameters={"clusters": parameter("integer", 2, "聚类数。", minimum=1, maximum=50), "embedding_dim": parameter("integer", 2, "卷积核数/嵌入维数。", minimum=1, maximum=64), "epochs": parameter("integer", 100, "训练轮数。", minimum=1, maximum=2_000), "learning_rate": parameter("number", 0.03, "学习率。", minimum=1e-5, maximum=1)}, max_nodes=1_000),
     spec("embedding.gcn", "GCN 嵌入适配器", "H'=σ(D̃^-1/2 Ã D̃^-1/2 HW)", "在可选 PyTorch 能力存在时执行 CPU GCN 邻接重构聚类。", ["显式聚合图邻域"], ["需可选 torch 模型运行时"], graph_types=["undirected"], parameters={"clusters": parameter("integer", 2, "聚类数。", minimum=1, maximum=50), "embedding_dim": parameter("integer", 2, "嵌入维数。", minimum=1, maximum=64), "epochs": parameter("integer", 100, "训练轮数。", minimum=1, maximum=2_000), "learning_rate": parameter("number", 0.03, "学习率。", minimum=1e-5, maximum=1)}, max_nodes=1_000),
     spec("embedding.gat", "GAT 嵌入适配器", "h'_i=σ(Σ_j α_ij Wh_j)", "在可选 PyTorch Geometric 能力存在时执行 CPU 注意力嵌入。", ["可学习邻居权重"], ["需可选 torch-geometric 模型运行时"], graph_types=["undirected"], parameters={"clusters": parameter("integer", 2, "聚类数。", minimum=1, maximum=50), "embedding_dim": parameter("integer", 2, "嵌入维数。", minimum=1, maximum=64), "epochs": parameter("integer", 100, "训练轮数。", minimum=1, maximum=2_000), "learning_rate": parameter("number", 0.03, "学习率。", minimum=1e-5, maximum=1)}, max_nodes=1_000),
-    spec("text.extract", "中文实体关系建网", "w_ij=cos(v_i,v_j) or normalize(count_ij)", "确定性预处理后生成可校正的实体/关系候选与归一化边权。", ["证据、偏移与置信度可校正"], ["规则模弋可漏掉隐含关系；模型适配器需本地能力"], parameters={"text": parameter("string", "", "待抽取中文文本。"), "method": parameter("string", "rule", "实体/关系方法。", choices=["rule", "paddlenlp"]), "embedding": parameter("string", "cosine", "边权方法。", choices=["cosine", "normalized", "bge"]), "model_path": parameter("string", "", "可选本地模型路径。")}, max_nodes=10_000),
+    spec("text.extract", "中文实体关系建网", "w_ij=cos(context_i,context_j), count_ij/max(count), or mean(BGE_ij)", "确定性预处理后生成可校正的实体/关系候选；重复有向节点对聚合为一条边，保留发生次数与候选索引，并按合并证据余弦、节点对计数归一化或 BGE 均值定权。", ["证据、偏移、发生次数与置信度可校正"], ["规则模式可漏掉隐含关系；模型适配器需本地能力"], parameters={"text": parameter("string", "", "待抽取中文文本。"), "method": parameter("string", "rule", "实体/关系方法。", choices=["rule", "paddlenlp"]), "embedding": parameter("string", "cosine", "聚合边权方法。", choices=["cosine", "normalized", "bge"]), "model_path": parameter("string", "", "可选本地模型路径。")}, max_nodes=10_000),
     spec("export.graph", "标准图导出", "serialize(G,format)", "以确定顺序导出 JSON、CSV、GraphML、GEXF、GML、Pajek、边表或邻接矩阵。", ["格式广泛且可复现"], ["部分文本格式不保留复杂属性"], parameters={"format": parameter("string", "json", "导出格式。", choices=["json", "csv", "graphml", "gexf", "gml", "pajek", "edgelist", "adjacency"])}),
 ])
 

@@ -3,9 +3,14 @@ import io
 import json
 import math
 
+import numpy as np
 import pytest
 
 from learning.algorithms import AlgorithmInputError, execute_algorithm, get_registry
+from learning.algorithms import community as community_module
+from learning.algorithms import embeddings as embedding_module
+from learning.algorithms import text as text_module
+from learning.algorithms.embeddings import _kmeans
 from learning.algorithms.exports import export_graph
 from learning.algorithms.text import extract_chinese_graph, preprocess_chinese
 
@@ -171,6 +176,29 @@ def test_centralities_match_path3_and_disconnected_eigenvector_is_explicit():
     assert any("非连通" in warning for warning in eigen["warnings"])
 
 
+def test_pagerank_hits_and_degree_centralization_match_exact_small_graphs():
+    pagerank = execute_algorithm("centrality.pagerank", PATH3, {"tolerance": 1e-12}, seed=2)
+    pagerank_values = {row["node"]: row["value"] for row in table_rows(pagerank)}
+    assert pagerank_values == pytest.approx({"a": 0.2567567568, "b": 0.4864864864, "c": 0.2567567568})
+
+    directed_hub = graph(["a", "b", "c"], [("a", "b", 1), ("c", "b", 1)], directed=True)
+    hits = execute_algorithm("centrality.hits", directed_hub, {"tolerance": 1e-12}, seed=2)
+    hits_values = {row["node"]: row for row in table_rows(hits)}
+    assert hits_values["b"]["authority"] == pytest.approx(1)
+    assert hits_values["a"]["hub"] == pytest.approx(1 / math.sqrt(2))
+    assert hits_values["c"]["hub"] == pytest.approx(1 / math.sqrt(2))
+    assert hits_values["b"]["hub"] == pytest.approx(0)
+
+    star = graph(["a", "b", "c", "d"], [("a", "b", 1), ("a", "c", 1), ("a", "d", 1)])
+    path4 = graph(["a", "b", "c", "d"], [("a", "b", 1), ("b", "c", 1), ("c", "d", 1)])
+    star_value = table_rows(execute_algorithm("centralization.degree", star, {}, seed=2), "centralization")[0]["centralization"]
+    path_value = table_rows(execute_algorithm("centralization.degree", path4, {}, seed=2), "centralization")[0]["centralization"]
+    assert star_value == pytest.approx(1)
+    assert path_value == pytest.approx(1 / 3)
+    with pytest.raises(AlgorithmInputError, match="无向图"):
+        execute_algorithm("centralization.degree", directed_hub, {}, seed=2)
+
+
 def test_iterative_library_failure_is_translated_to_a_stable_engine_error():
     with pytest.raises(AlgorithmInputError) as exc:
         execute_algorithm(
@@ -210,14 +238,17 @@ def test_cpm_clique_percolation_preserves_overlapping_bridge_membership():
     assert result["provenance"]["overlapping"] is True
 
 
-def test_leiden_dependency_fallback_is_visible_and_never_silent():
+def test_leiden_dependency_fallback_is_visible_and_never_silent(monkeypatch):
+    original_find_spec = community_module.importlib.util.find_spec
+    monkeypatch.setattr(
+        community_module.importlib.util,
+        "find_spec",
+        lambda name: None if name in {"igraph", "leidenalg"} else original_find_spec(name),
+    )
     result = execute_algorithm("community.leiden", TWO_TRIANGLES, {}, seed=7)
 
-    if result["provenance"].get("implementation") == "leidenalg":
-        assert result["provenance"]["fallback"] is None
-    else:
-        assert result["provenance"]["fallback"] == "louvain"
-        assert any("Louvain" in warning for warning in result["warnings"])
+    assert result["provenance"]["fallback"] == "louvain"
+    assert any("Louvain" in warning for warning in result["warnings"])
 
 
 def test_community_detection_handles_disconnected_edgeless_graph_explicitly():
@@ -246,6 +277,18 @@ def test_graph_engine_rejects_malformed_graph_and_non_finite_weights():
         execute_algorithm("topology.summary", graph(["a"], [("a", "a", math.inf)]), {}, seed=1)
     with pytest.raises(AlgorithmInputError, match="parameters"):
         execute_algorithm("graph.validate", graph(["a"], []), [], seed=1)
+
+
+def test_huge_numeric_inputs_return_stable_validation_errors_instead_of_overflowing():
+    huge = 10 ** 400
+    with pytest.raises(AlgorithmInputError, match="有限"):
+        execute_algorithm("graph.validate", {
+            "directed": False,
+            "nodes": [{"id": "a"}, {"id": "b"}],
+            "edges": [{"source": "a", "target": "b", "weight": huge}],
+        }, {}, seed=1)
+    with pytest.raises(AlgorithmInputError, match="有限"):
+        execute_algorithm("model.er", graph([], []), {"n": 3, "p": huge}, seed=1)
 
 
 def test_robustness_random_and_targeted_attacks_return_sq_and_normalized_r():
@@ -295,6 +338,19 @@ def test_opinion_models_converge_reproducibly_on_connected_path(algorithm, param
     assert len(first["charts"][0]["series"]) >= 2
 
 
+def test_opinion_registry_only_exposes_effective_model_parameters_and_graph_types():
+    registry = {item["key"]: item for item in get_registry()}
+    assert set(registry["opinion.degroot"]["parameters"]) == {"opinions", "max_iterations", "tolerance"}
+    assert set(registry["opinion.friedkin_johnsen"]["parameters"]) == {"opinions", "max_iterations", "tolerance", "stubbornness"}
+    assert set(registry["opinion.deffuant"]["parameters"]) == {"opinions", "tolerance", "confidence", "mu", "steps"}
+    assert set(registry["opinion.hk"]["parameters"]) == {"opinions", "max_iterations", "tolerance", "confidence"}
+    assert registry["opinion.deffuant"]["supported_graph_types"] == ["undirected"]
+    with pytest.raises(AlgorithmInputError, match="未知参数"):
+        execute_algorithm("opinion.degroot", PATH3, {"stubbornness": 0.5}, seed=1)
+    with pytest.raises(AlgorithmInputError, match="无向图"):
+        execute_algorithm("opinion.deffuant", graph(["a", "b"], [("a", "b", 1)], directed=True), {}, seed=1)
+
+
 def test_dynamic_community_matching_emits_birth_death_split_merge_and_continuation():
     first = graph(["a", "b", "c", "d"], [("a", "b", 1), ("c", "d", 1)])
     second = graph(["a", "b", "c", "d", "e", "f", "g"], [("a", "b", 1), ("b", "c", 1), ("c", "d", 1), ("d", "e", 1), ("f", "g", 1)])
@@ -309,6 +365,53 @@ def test_dynamic_community_matching_emits_birth_death_split_merge_and_continuati
     assert {"continuation", "birth", "death"} <= events
     assert {"split", "merge"} & events
     assert result["charts"][0]["type"] == "timeline"
+
+
+def test_dynamic_community_reports_exact_split_and_merge_events_separately():
+    snapshot = graph(["a", "b", "c", "d"], [("a", "b", 1), ("b", "c", 1), ("c", "d", 1)])
+    split = execute_algorithm("community.dynamic", snapshot, {
+        "snapshots": [snapshot, snapshot],
+        "snapshot_communities": [["a|b|c|d"], ["a|b", "c|d"]],
+        "threshold": 0.4,
+    }, seed=1)
+    split_rows = [row for row in table_rows(split, "events") if row["event"] == "split"]
+    assert split_rows == [{"time": 1, "event": "split", "source": 0, "target": [0, 1], "similarity": 0.5}]
+
+    merge = execute_algorithm("community.dynamic", snapshot, {
+        "snapshots": [snapshot, snapshot],
+        "snapshot_communities": [["a|b", "c|d"], ["a|b|c|d"]],
+        "threshold": 0.4,
+    }, seed=1)
+    merge_rows = [row for row in table_rows(merge, "events") if row["event"] == "merge"]
+    assert merge_rows == [{"time": 1, "event": "merge", "source": [0, 1], "target": 0, "similarity": 0.5}]
+
+
+@pytest.mark.parametrize("partitions, message", [
+    ([["a|b"], ["a|b"]], "缺少"),
+    ([["a|b", "b|c"], ["a|b|c"]], "重复"),
+])
+def test_dynamic_snapshots_require_exact_nonoverlapping_partitions(partitions, message):
+    with pytest.raises(AlgorithmInputError, match=message):
+        execute_algorithm("community.dynamic", PATH3, {
+            "snapshots": [PATH3, PATH3], "snapshot_communities": partitions,
+        }, seed=1)
+
+
+def test_dynamic_snapshots_validate_each_graph_type_shape_and_advertised_limit():
+    malformed = {
+        "directed": False,
+        "nodes": [{"id": "a"}, {"id": "b"}],
+        "edges": [{"source": "a", "target": "b"}, {"source": "b", "target": "a"}],
+    }
+    with pytest.raises(AlgorithmInputError, match="重复"):
+        execute_algorithm("community.dynamic", PATH3, {"snapshots": [PATH3, malformed]}, seed=1)
+    with pytest.raises(AlgorithmInputError, match="无向图"):
+        execute_algorithm("community.dynamic", PATH3, {
+            "snapshots": [PATH3, graph(["a", "b"], [("a", "b", 1)], directed=True)],
+        }, seed=1)
+    oversized = graph([str(index) for index in range(2_001)], [])
+    with pytest.raises(AlgorithmInputError, match="2000"):
+        execute_algorithm("community.dynamic", PATH3, {"snapshots": [oversized]}, seed=1)
 
 
 @pytest.mark.parametrize("algorithm", ["embedding.ae", "embedding.cnn"])
@@ -328,13 +431,48 @@ def test_cpu_embedding_clustering_trains_and_returns_nonconstant_embeddings(algo
     assert losses[-1]["loss"] < losses[0]["loss"]
 
 
+def test_kmeans_guarantees_requested_nonempty_clusters_or_rejects_identical_embeddings():
+    labels, _ = _kmeans(np.asarray([[0.0, 0.0], [0.0, 0.0], [1.0, 1.0], [1.0, 1.0]]), 2, seed=3)
+    assert set(labels.tolist()) == {0, 1}
+    with pytest.raises(AlgorithmInputError, match="不同嵌入"):
+        _kmeans(np.zeros((4, 2)), 2, seed=3)
+    with pytest.raises(AlgorithmInputError, match="有限"):
+        _kmeans(np.asarray([[0.0, 0.0], [math.inf, 1.0]]), 2, seed=3)
+
+
 @pytest.mark.parametrize("algorithm, dependency", [("embedding.gcn", "torch"), ("embedding.gat", "torch_geometric")])
-def test_optional_gnn_adapters_fail_with_explicit_capability_error(algorithm, dependency):
+def test_optional_gnn_adapters_fail_with_explicit_capability_error(monkeypatch, algorithm, dependency):
+    original_find_spec = embedding_module.importlib.util.find_spec
+    monkeypatch.setattr(
+        embedding_module.importlib.util,
+        "find_spec",
+        lambda name: None if name == dependency else original_find_spec(name),
+    )
     with pytest.raises(AlgorithmInputError) as exc:
         execute_algorithm(algorithm, PATH3, {"clusters": 2}, seed=1)
 
     assert exc.value.code == "capability_unavailable"
     assert dependency in str(exc.value)
+
+
+@pytest.mark.parametrize("algorithm, adapter_name, implementation", [
+    ("embedding.gcn", "_torch_gcn", "torch_cpu_gcn"),
+    ("embedding.gat", "_torch_gat", "torch_geometric_cpu_gat"),
+])
+def test_optional_gnn_positive_adapter_contract_is_exercised_with_deterministic_stub(monkeypatch, algorithm, adapter_name, implementation):
+    monkeypatch.setattr(embedding_module.importlib.util, "find_spec", lambda name: object())
+    monkeypatch.setattr(
+        embedding_module,
+        adapter_name,
+        lambda matrix, dimensions, epochs, learning_rate, seed: (
+            np.asarray([[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]]), [1.0, 0.5]
+        ),
+    )
+    result = execute_algorithm(algorithm, PATH3, {"clusters": 2, "epochs": 2}, seed=9)
+
+    assert result["provenance"]["implementation"] == implementation
+    assert result["provenance"]["device"] == "cpu"
+    assert len({row["cluster"] for row in table_rows(result, "embeddings")}) == 2
 
 
 def test_chinese_preprocessing_and_rule_extraction_are_deterministic_and_correction_friendly():
@@ -349,8 +487,71 @@ def test_chinese_preprocessing_and_rule_extraction_are_deterministic_and_correct
     assert json.loads(json.dumps(extracted, ensure_ascii=False)) == extracted
 
 
+def test_repeated_text_relations_aggregate_to_a_downstream_valid_simple_graph():
+    extracted = extract_chinese_graph(
+        "华为与比亚迪签署合作协议。华为与比亚迪建立联合实验室。",
+        method="rule", embedding="normalized", seed=4,
+    )
+
+    assert len(extracted["relations"]) == 2
+    assert extracted["graph"]["edges"] == [{
+        "source": "华为", "target": "比亚迪", "weight": 1.0,
+        "relations": ["建立联合实验室", "签署合作协议"],
+        "occurrence_count": 2, "candidate_indices": [0, 1],
+    }]
+    validated = execute_algorithm("graph.validate", extracted["graph"], {}, seed=4)
+    assert validated["validation"]["valid"] is True
+
+
+def test_paddlenlp_adapter_transforms_actual_uie_output_without_rule_substitution(monkeypatch):
+    raw = [{"组织机构": [{
+        "text": "华为", "start": 0, "end": 2, "probability": 0.99,
+        "relations": {"合作方": [{"text": "比亚迪", "start": 3, "end": 6, "probability": 0.91}]},
+    }]}]
+    monkeypatch.setattr(text_module, "_load_paddlenlp_extractor", lambda model_path: lambda text: raw)
+    extracted = extract_chinese_graph("华为与比亚迪合作。", method="paddlenlp", model_path="local-model")
+
+    assert extracted["entities"] == [
+        {"entity": "华为", "type": "组织机构", "start": 0, "end": 2, "confidence": 0.99, "evidence": "华为", "editable": True},
+        {"entity": "比亚迪", "type": "合作方", "start": 3, "end": 6, "confidence": 0.91, "evidence": "比亚迪", "editable": True},
+    ]
+    assert extracted["relations"] == [{
+        "source": "华为", "target": "比亚迪", "relation": "合作方",
+        "evidence": "华为与比亚迪", "start": 0, "end": 6,
+        "confidence": 0.91, "editable": True,
+    }]
+
+
+def test_paddlenlp_adapter_rejects_unsupported_model_schema(monkeypatch):
+    monkeypatch.setattr(text_module, "_load_paddlenlp_extractor", lambda model_path: lambda text: [{"unexpected": [{"value": "华为"}]}])
+    with pytest.raises(AlgorithmInputError) as exc:
+        extract_chinese_graph("华为与比亚迪合作。", method="paddlenlp", model_path="local-model")
+    assert exc.value.code == "unsupported_model_schema"
+
+
+def test_bge_positive_adapter_uses_normalized_model_cosine(monkeypatch):
+    class StubModel:
+        def encode(self, values, **kwargs):
+            assert values == ["华为", "比亚迪"]
+            assert kwargs["normalize_embeddings"] is True
+            return np.asarray([[1.0, 0.0], [0.6, 0.8]])
+
+    monkeypatch.setattr(text_module, "_load_bge_model", lambda model_path: StubModel())
+    extracted = extract_chinese_graph(
+        "华为与比亚迪签署合作协议。", method="rule", embedding="bge", model_path="local-model",
+    )
+    assert extracted["graph"]["edges"][0]["weight"] == pytest.approx(0.6)
+
+
 @pytest.mark.parametrize("method, dependency", [("paddlenlp", "paddlenlp"), ("bge", "sentence-transformers")])
-def test_absent_text_models_raise_explicit_capability_errors(method, dependency):
+def test_absent_text_models_raise_explicit_capability_errors(monkeypatch, method, dependency):
+    original_find_spec = text_module.importlib.util.find_spec
+    missing_module = "sentence_transformers" if method == "bge" else "paddlenlp"
+    monkeypatch.setattr(
+        text_module.importlib.util,
+        "find_spec",
+        lambda name: None if name == missing_module else original_find_spec(name),
+    )
     with pytest.raises(AlgorithmInputError) as exc:
         extract_chinese_graph("华为与比亚迪合作。", method=method)
 

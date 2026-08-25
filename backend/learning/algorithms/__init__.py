@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from typing import Any
 
 import networkx as nx
@@ -11,7 +10,7 @@ from .dynamics import run_dynamic, run_opinion
 from .embeddings import run_embedding
 from .errors import AlgorithmInputError
 from .exports import export_graph
-from .graph import normalize_graph
+from .graph import coerce_finite_float, normalize_graph
 from .prediction import run_link_prediction, run_robustness
 from .registry import REGISTRY_BY_KEY, get_registry
 from .results import overlay, result, table
@@ -59,15 +58,17 @@ def _resolve_parameters(spec: dict[str, Any], supplied: Any) -> dict[str, Any]:
     for name, value in resolved.items():
         definition = definitions[name]
         kind = definition["type"]
+        finite_number = coerce_finite_float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) else None
         valid = {
             "integer": isinstance(value, int) and not isinstance(value, bool),
-            "number": isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value)),
+            "number": finite_number is not None,
             "string": isinstance(value, str),
             "object": isinstance(value, dict),
             "array": isinstance(value, list),
         }.get(kind, True)
         if not valid:
-            raise AlgorithmInputError(f"参数 {name} 必须是 {kind} 类型。", path=f"parameters.{name}")
+            message = f"参数 {name} 必须是有限数值。" if kind == "number" else f"参数 {name} 必须是 {kind} 类型。"
+            raise AlgorithmInputError(message, path=f"parameters.{name}")
         if "minimum" in definition and value < definition["minimum"]:
             raise AlgorithmInputError(f"参数 {name} 不得小于 {definition['minimum']}。", path=f"parameters.{name}")
         if "maximum" in definition and value > definition["maximum"]:
@@ -112,7 +113,7 @@ def execute_algorithm(
     elif algorithm in OPINION:
         bundle = _networkx_guard(run_opinion, algorithm, normalized, params, effective_seed)
     elif algorithm == "community.dynamic":
-        bundle = _networkx_guard(run_dynamic, normalized, params, effective_seed)
+        bundle = _networkx_guard(run_dynamic, normalized, params, effective_seed, spec["limits"])
     elif algorithm in EMBEDDINGS:
         bundle = _networkx_guard(run_embedding, algorithm, normalized, params, effective_seed)
     elif algorithm == "text.extract":

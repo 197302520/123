@@ -8,6 +8,14 @@ import networkx as nx
 from .errors import AlgorithmInputError
 
 
+def coerce_finite_float(value: Any) -> float | None:
+    try:
+        converted = float(value)
+    except (OverflowError, TypeError, ValueError):
+        return None
+    return converted if math.isfinite(converted) else None
+
+
 def normalize_graph(payload: Any) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise AlgorithmInputError("图必须是对象。", path="graph")
@@ -43,15 +51,16 @@ def normalize_graph(payload: Any) -> dict[str, Any]:
         weight = edge.get("weight", 1) if isinstance(edge, dict) else 1
         if isinstance(weight, bool) or not isinstance(weight, (int, float)):
             raise AlgorithmInputError("边权重必须是数值。", path=f"edges[{index}].weight")
-        if not math.isfinite(float(weight)):
+        normalized_weight = coerce_finite_float(weight)
+        if normalized_weight is None:
             raise AlgorithmInputError("边权重必须是有限数值。", path=f"edges[{index}].weight")
-        if float(weight) <= 0:
+        if normalized_weight <= 0:
             raise AlgorithmInputError("边权重必须大于 0。", path=f"edges[{index}].weight")
         edge_key = (source, target) if directed or source <= target else (target, source)
         if edge_key in seen_edges:
             raise AlgorithmInputError(f"边 '{source}-{target}' 重复。", path=f"edges[{index}]")
         seen_edges.add(edge_key)
-        normalized_edges.append({"source": source, "target": target, "weight": float(weight)})
+        normalized_edges.append({"source": source, "target": target, "weight": normalized_weight})
     return {"directed": directed, "nodes": normalized_nodes, "edges": normalized_edges}
 
 

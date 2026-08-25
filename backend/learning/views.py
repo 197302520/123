@@ -13,7 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .algorithms import AlgorithmInputError, execute_algorithm
-from .algorithms.graph import normalize_graph
+from .algorithms.graph import coerce_finite_float, normalize_graph
 from .contracts import ALGORITHM_REGISTRY, GraphSpec, RunResult
 from .models import Case, CourseModule, PublishStatus, Run
 
@@ -95,8 +95,12 @@ def graph_validation(payload: Any) -> tuple[GraphSpec | None, list[dict[str, str
         weight = edge.get("weight", 1) if isinstance(edge, dict) else 1
         if isinstance(weight, bool) or not isinstance(weight, (int, float)):
             errors.append({"path": f"edges[{index}].weight", "message": "边权重必须是数值。"})
-        elif isinstance(source, str) and isinstance(target, str):
-            normalized_edges.append({"source": source, "target": target, "weight": float(weight)})
+        else:
+            normalized_weight = coerce_finite_float(weight)
+            if normalized_weight is None:
+                errors.append({"path": f"edges[{index}].weight", "message": "边权重必须是有限数值。"})
+            elif isinstance(source, str) and isinstance(target, str):
+                normalized_edges.append({"source": source, "target": target, "weight": normalized_weight})
     if errors:
         return None, errors
     try:

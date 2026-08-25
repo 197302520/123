@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .errors import AlgorithmInputError
+from .graph import coerce_finite_float
 
 
 SENTENCE_PATTERN = re.compile(r"[^。！？!?；;\n]+[。！？!?；;]?", re.UNICODE)
@@ -96,36 +97,115 @@ def _rule_candidates(normalized: str) -> tuple[list[dict[str, Any]], list[dict[s
     return entities, relations
 
 
-def _paddlenlp_candidates(normalized: str, model_path: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    _require_local_model("paddlenlp", "paddlenlp", model_path)
+def _load_paddlenlp_extractor(model_path: str) -> Any:
+    path = _require_local_model("paddlenlp", "paddlenlp", model_path)
     try:
         from paddlenlp import Taskflow
 
-        extractor = Taskflow("information_extraction", schema=["实体", {"关系": ["主体", "客体"]}], task_path=model_path)
-        raw = extractor(normalized)
+        return Taskflow(
+            "information_extraction",
+            schema=[{"组织机构": ["合作方", "被投资方", "被收购方", "供应方", "客户"]}],
+            task_path=str(path),
+        )
     except Exception as exc:
         raise AlgorithmInputError(f"PaddleNLP 本地模型无法加载：{exc}", code="capability_unavailable", path="parameters.model_path") from exc
-    # UIE schemas differ across locally supplied models. Preserve raw candidates for correction,
-    # while rule candidates provide a stable graph projection when relation fields are absent.
-    entities, relations = _rule_candidates(normalized)
-    for entity in entities:
-        entity["adapter"] = "paddlenlp"
-    for relation in relations:
-        relation["adapter"] = "paddlenlp"
-        relation["model_output_available"] = bool(raw)
+
+
+def _uie_span(item: Any, normalized: str, *, label: str) -> tuple[str, int, int, float]:
+    if not isinstance(item, dict):
+        raise AlgorithmInputError(f"PaddleNLP UIE {label} 必须是对象。", code="unsupported_model_schema", path="model_output")
+    text = item.get("text")
+    start = item.get("start")
+    end = item.get("end")
+    raw_confidence = item.get("probability") if "probability" in item else item.get("confidence")
+    confidence = coerce_finite_float(raw_confidence)
+    if (
+        not isinstance(text, str) or not text
+        or isinstance(start, bool) or not isinstance(start, int)
+        or isinstance(end, bool) or not isinstance(end, int)
+        or not 0 <= start < end <= len(normalized)
+        or normalized[start:end] != text
+        or confidence is None or not 0 <= confidence <= 1
+    ):
+        raise AlgorithmInputError(f"PaddleNLP UIE {label} 缺少可校正的 text/start/end/probability 字段。", code="unsupported_model_schema", path="model_output")
+    return text, start, end, confidence
+
+
+def _transform_paddlenlp_output(normalized: str, raw: Any) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    if not isinstance(raw, list) or len(raw) != 1 or not isinstance(raw[0], dict) or not raw[0]:
+        raise AlgorithmInputError("PaddleNLP UIE 输出必须是单文本对象列表。", code="unsupported_model_schema", path="model_output")
+    entity_by_span: dict[tuple[str, int, int], dict[str, Any]] = {}
+    relations: list[dict[str, Any]] = []
+    for entity_type in sorted(raw[0]):
+        sources = raw[0][entity_type]
+        if not isinstance(entity_type, str) or not isinstance(sources, list):
+            raise AlgorithmInputError("PaddleNLP UIE 顶层实体类型必须是列表。", code="unsupported_model_schema", path="model_output")
+        for source_item in sources:
+            source, source_start, source_end, source_confidence = _uie_span(source_item, normalized, label="实体")
+            entity_by_span[(source, source_start, source_end)] = {
+                "entity": source, "type": entity_type, "start": source_start, "end": source_end,
+                "confidence": source_confidence, "evidence": normalized[source_start:source_end], "editable": True,
+            }
+            relation_groups = source_item.get("relations")
+            if relation_groups is None:
+                continue
+            if not isinstance(relation_groups, dict):
+                raise AlgorithmInputError("PaddleNLP UIE relations 必须是对象。", code="unsupported_model_schema", path="model_output")
+            for relation_name in sorted(relation_groups):
+                targets = relation_groups[relation_name]
+                if not isinstance(relation_name, str) or not relation_name or not isinstance(targets, list):
+                    raise AlgorithmInputError("PaddleNLP UIE 关系类型必须是非空列表。", code="unsupported_model_schema", path="model_output")
+                for target_item in targets:
+                    target, target_start, target_end, target_confidence = _uie_span(target_item, normalized, label="关系目标")
+                    entity_by_span[(target, target_start, target_end)] = {
+                        "entity": target, "type": relation_name, "start": target_start, "end": target_end,
+                        "confidence": target_confidence, "evidence": normalized[target_start:target_end], "editable": True,
+                    }
+                    start = min(source_start, target_start)
+                    end = max(source_end, target_end)
+                    relations.append({
+                        "source": source, "target": target, "relation": relation_name,
+                        "evidence": normalized[start:end], "start": start, "end": end,
+                        "confidence": min(source_confidence, target_confidence), "editable": True,
+                    })
+    if not relations:
+        raise AlgorithmInputError("PaddleNLP UIE 模型输出不含支持的实体关系 schema。", code="unsupported_model_schema", path="model_output")
+    entities = sorted(entity_by_span.values(), key=lambda item: (item["start"], item["end"], item["entity"]))
+    relations.sort(key=lambda item: (item["start"], item["end"], item["source"], item["target"], item["relation"]))
     return entities, relations
 
 
-def _bge_weights(relations: list[dict[str, Any]], model_path: str) -> list[float]:
+def _paddlenlp_candidates(normalized: str, model_path: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    extractor = _load_paddlenlp_extractor(model_path)
+    try:
+        raw = extractor(normalized)
+    except AlgorithmInputError:
+        raise
+    except Exception as exc:
+        raise AlgorithmInputError(f"PaddleNLP 本地模型推理失败：{exc}", code="capability_unavailable", path="parameters.model_path") from exc
+    return _transform_paddlenlp_output(normalized, raw)
+
+
+def _load_bge_model(model_path: str) -> Any:
     path = _require_local_model("sentence_transformers", "sentence-transformers", model_path)
     try:
         from sentence_transformers import SentenceTransformer
 
-        model = SentenceTransformer(str(path), local_files_only=True, device="cpu")
-        pairs = [[relation["source"], relation["target"]] for relation in relations]
-        embeddings = model.encode([item for pair in pairs for item in pair], normalize_embeddings=True, show_progress_bar=False)
+        return SentenceTransformer(str(path), local_files_only=True, device="cpu")
     except Exception as exc:
         raise AlgorithmInputError(f"BGE 本地模型无法加载：{exc}", code="capability_unavailable", path="parameters.model_path") from exc
+
+
+def _bge_weights(relations: list[dict[str, Any]], model: Any) -> list[float]:
+    pairs = [[relation["source"], relation["target"]] for relation in relations]
+    try:
+        embeddings = model.encode(
+            [item for pair in pairs for item in pair],
+            normalize_embeddings=True,
+            show_progress_bar=False,
+        )
+    except Exception as exc:
+        raise AlgorithmInputError(f"BGE 本地模型推理失败：{exc}", code="capability_unavailable", path="parameters.model_path") from exc
     return [max(0.0, min(1.0, float(embeddings[index * 2] @ embeddings[index * 2 + 1]))) for index in range(len(relations))]
 
 
@@ -141,9 +221,9 @@ def extract_chinese_graph(
     processed = preprocess_chinese(text)
     normalized = processed["normalized_text"]
     if method == "bge":
-        _require_local_model("sentence_transformers", "sentence-transformers", model_path)
         embedding = "bge"
         method = "rule"
+    bge_model = _load_bge_model(str(model_path or "")) if embedding == "bge" else None
     if method == "paddlenlp":
         entities, relations = _paddlenlp_candidates(normalized, str(model_path or ""))
     elif method == "rule":
@@ -153,33 +233,33 @@ def extract_chinese_graph(
     if not relations:
         raise AlgorithmInputError("未识别到可建网的实体关系候选；请补充关系表达或切换可用模型。", code="no_candidates", path="parameters.text")
 
-    counts = Counter((relation["source"], relation["target"], relation["relation"]) for relation in relations)
-    maximum_count = max(counts.values())
+    grouped: dict[tuple[str, str], list[int]] = {}
+    for index, relation in enumerate(relations):
+        grouped.setdefault((relation["source"], relation["target"]), []).append(index)
+    maximum_count = max(len(indices) for indices in grouped.values())
     if embedding == "bge":
-        weights = _bge_weights(relations, str(model_path or ""))
-    elif embedding == "normalized":
-        weights = [counts[(relation["source"], relation["target"], relation["relation"])] / maximum_count for relation in relations]
-    elif embedding == "cosine":
-        weights = []
-        for relation in relations:
-            shared = relation["evidence"]
-            left = _char_vector(relation["source"] + shared)
-            right = _char_vector(relation["target"] + shared)
-            weights.append(max(0.01, min(1.0, _cosine(left, right))))
-    else:
+        occurrence_weights = _bge_weights(relations, bge_model)
+    elif embedding not in {"normalized", "cosine"}:
         raise AlgorithmInputError(f"不支持的边权方法：{embedding}。", path="parameters.embedding")
 
     node_ids = sorted({relation["source"] for relation in relations} | {relation["target"] for relation in relations})
-    edges = [
-        {
-            "source": relation["source"],
-            "target": relation["target"],
-            "weight": float(weights[index]),
-            "relation": relation["relation"],
-            "candidate_index": index,
-        }
-        for index, relation in enumerate(relations)
-    ]
+    edges = []
+    for (source, target), indices in sorted(grouped.items()):
+        if embedding == "normalized":
+            weight = len(indices) / maximum_count
+        elif embedding == "cosine":
+            shared = "".join(relations[index]["evidence"] for index in indices)
+            weight = _cosine(_char_vector(source + shared), _char_vector(target + shared))
+        else:
+            weight = sum(occurrence_weights[index] for index in indices) / len(indices)
+        edges.append({
+            "source": source,
+            "target": target,
+            "weight": float(max(0.01, min(1.0, weight))),
+            "relations": sorted({relations[index]["relation"] for index in indices}),
+            "occurrence_count": len(indices),
+            "candidate_indices": indices,
+        })
     return {
         "preprocessing": processed,
         "entities": entities,
