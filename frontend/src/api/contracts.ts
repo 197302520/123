@@ -11,6 +11,11 @@ export interface AlgorithmSpec {
   parameters: Record<string, unknown>
   version: string
   description: string
+  limits: { max_nodes: number; max_edges: number }
+  formula: string
+  explanation: string
+  advantages: string[]
+  limitations: string[]
 }
 export interface RunRequest {
   algorithm: string
@@ -22,6 +27,7 @@ export interface RunResult {
   run_id: string
   status: string
   tables: unknown[]
+  overlays: unknown[]
   charts: unknown[]
   warnings: string[]
   provenance: Record<string, unknown>

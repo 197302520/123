@@ -12,7 +12,9 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .contracts import ALGORITHM_REGISTRY, GRAPH_VALIDATE_SPEC, GraphSpec, RunResult
+from .algorithms import AlgorithmInputError, execute_algorithm
+from .algorithms.graph import normalize_graph
+from .contracts import ALGORITHM_REGISTRY, GraphSpec, RunResult
 from .models import Case, CourseModule, PublishStatus, Run
 
 
@@ -97,7 +99,11 @@ def graph_validation(payload: Any) -> tuple[GraphSpec | None, list[dict[str, str
             normalized_edges.append({"source": source, "target": target, "weight": float(weight)})
     if errors:
         return None, errors
-    return {"directed": directed, "nodes": normalized_nodes, "edges": normalized_edges}, []
+    try:
+        normalized = normalize_graph({"directed": directed, "nodes": normalized_nodes, "edges": normalized_edges})
+    except AlgorithmInputError as exc:
+        return None, [{"path": exc.path, "message": str(exc)}]
+    return normalized, []
 
 
 class ModuleListView(APIView):
@@ -152,8 +158,6 @@ class RunListView(APIView):
         algorithm = request.data.get("algorithm")
         graph, errors = graph_validation(request.data.get("graph"))
         parameters = request.data.get("parameters", {})
-        if algorithm != GRAPH_VALIDATE_SPEC["key"]:
-            return Response({"detail": "暂不支持该算法。"}, status=status.HTTP_400_BAD_REQUEST)
         if errors:
             return Response({"valid": False, "errors": errors}, status=status.HTTP_400_BAD_REQUEST)
         if not isinstance(parameters, dict):
@@ -161,12 +165,10 @@ class RunListView(APIView):
         seed = request.data.get("seed")
         if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
             return Response({"detail": "seed 必须是整数。"}, status=status.HTTP_400_BAD_REQUEST)
-        result = {
-            "tables": [],
-            "charts": [],
-            "warnings": [],
-            "validation": {"valid": True, "errors": [], "graph": graph},
-        }
+        try:
+            result = execute_algorithm(algorithm, graph, parameters, seed=seed)
+        except AlgorithmInputError as exc:
+            return Response({"error": exc.as_dict()}, status=status.HTTP_400_BAD_REQUEST)
         run = Run.objects.create(
             algorithm=algorithm,
             graph=graph,
@@ -193,14 +195,16 @@ class RunResultView(APIView):
             run = active_runs().get(pk=run_id)
         except (Run.DoesNotExist, ValueError) as exc:
             raise Http404 from exc
+        stored = run.result
         result: RunResult = {
             "run_id": str(run.id),
             "status": run.status,
-            "tables": run.result.get("tables", []),
-            "charts": run.result.get("charts", []),
-            "warnings": run.result.get("warnings", []),
-            "provenance": {"algorithm": run.algorithm, "version": "1.0", "seed": run.seed},
-            "validation": run.result.get("validation", {"valid": False, "errors": [], "graph": run.graph}),
+            "tables": stored.get("tables", []),
+            "overlays": stored.get("overlays", []),
+            "charts": stored.get("charts", []),
+            "warnings": stored.get("warnings", []),
+            "provenance": stored.get("provenance", {"algorithm": run.algorithm, "version": "1.0", "seed": run.seed}),
+            "validation": stored.get("validation", {"valid": False, "errors": [], "graph": run.graph}),
         }
         return Response(result)
 

@@ -131,24 +131,31 @@ def test_public_algorithm_and_run_routes_expose_stable_contracts(api_client):
     }, format="json")
 
     assert algorithms.status_code == 200
-    assert algorithms.json()[0] == {
+    first_algorithm = algorithms.json()[0]
+    assert {key: first_algorithm[key] for key in [
+        "key", "name", "supported_graph_types", "parameters", "version", "description",
+    ]} == {
         "key": "graph.validate", "name": "图结构验证", "supported_graph_types": ["directed", "undirected"],
         "parameters": {}, "version": "1.0", "description": "验证图结构是否可用于后续分析。",
     }
+    assert {"limits", "formula", "explanation", "advantages", "limitations"} <= set(first_algorithm)
     assert submission.status_code == 201
     assert submission.json() == {
         "id": submission.json()["id"], "status": "completed", "algorithm": "graph.validate", "seed": 7,
     }
     run_id = submission.json()["id"]
     assert api_client.get(f"/api/runs/{run_id}/").json()["status"] == "completed"
-    assert api_client.get(f"/api/runs/{run_id}/result/").json() == {
-        "run_id": run_id, "status": "completed", "tables": [], "charts": [], "warnings": [],
-        "provenance": {"algorithm": "graph.validate", "version": "1.0", "seed": 7},
-        "validation": {
-            "valid": True,
-            "errors": [],
-            "graph": {"directed": False, "nodes": [{"id": "a", "label": "a"}], "edges": []},
-        },
+    result = api_client.get(f"/api/runs/{run_id}/result/").json()
+    assert {key: result[key] for key in ["run_id", "status", "tables", "overlays", "charts", "warnings"]} == {
+        "run_id": run_id, "status": "completed", "tables": [], "overlays": [], "charts": [], "warnings": [],
+    }
+    assert {key: result["provenance"][key] for key in ["algorithm", "version", "seed"]} == {
+        "algorithm": "graph.validate", "version": "1.0", "seed": 7,
+    }
+    assert result["validation"] == {
+        "valid": True,
+        "errors": [],
+        "graph": {"directed": False, "nodes": [{"id": "a", "label": "a"}], "edges": []},
     }
     run = Run.objects.get(pk=run_id)
     assert run.result["validation"]["graph"]["nodes"] == [{"id": "a", "label": "a"}]

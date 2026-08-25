@@ -45,6 +45,11 @@ class AlgorithmSpec(TypedDict):
     parameters: dict[str, object]
     version: str
     description: str
+    limits: dict[str, int]
+    formula: str
+    explanation: str
+    advantages: list[str]
+    limitations: list[str]
 
 
 class RunRequest(TypedDict):
@@ -58,18 +63,15 @@ class RunResult(TypedDict):
     run_id: str
     status: str
     tables: list[object]
+    overlays: list[object]
     charts: list[object]
     warnings: list[str]
     provenance: dict[str, object]
     validation: dict[str, object]
 
 
-GRAPH_VALIDATE_SPEC: AlgorithmSpec = {
-    "key": "graph.validate",
-    "name": "图结构验证",
-    "supported_graph_types": ["directed", "undirected"],
-    "parameters": {},
-    "version": "1.0",
-    "description": "验证图结构是否可用于后续分析。",
-}
-ALGORITHM_REGISTRY: list[AlgorithmSpec] = [GRAPH_VALIDATE_SPEC]
+from .algorithms.registry import ALGORITHM_REGISTRY as _ALGORITHM_REGISTRY
+
+
+ALGORITHM_REGISTRY: list[AlgorithmSpec] = _ALGORITHM_REGISTRY  # type: ignore[assignment]
+GRAPH_VALIDATE_SPEC: AlgorithmSpec = ALGORITHM_REGISTRY[0]
