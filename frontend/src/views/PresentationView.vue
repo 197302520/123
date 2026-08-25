@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { fetchCase } from '../api/client'
 import type { CaseDetail } from '../api/contracts'
 import { CASE_SECTIONS } from '../content/catalog'
@@ -8,17 +8,39 @@ const props = defineProps<{ slug: string }>()
 const detail = ref<CaseDetail | null>(null)
 const error = ref('')
 const index = ref(0)
-const section = computed(() => CASE_SECTIONS[index.value])
+const sections = computed(() => CASE_SECTIONS.map((base, sectionIndex) => {
+  if (!detail.value) return base
+  const item = detail.value
+  const dataset = item.dataset
+  const metadata = dataset ? Object.entries(dataset.metadata).map(([key, value]) => `${key}：${String(value)}`).join('；') : '本案例未附公开数据集，需说明自带数据来源。'
+  const bodies = [
+    `${item.title}关注“${item.summary}”。${item.content || '先从案例摘要界定要解释的关系现象。'}`,
+    `${dataset?.title ?? '自带数据'}：${dataset?.provenance ?? '来源由学习者补充'}。${metadata}`,
+    `围绕“${item.summary}”选择适用于 ${item.module} 模块的网络方法，并先核对图类型、参数假设与算法限制。`,
+    `${item.title}不预置算法结论。把案例网络送入自由实验室，保留输入图、参数、种子与版本，再阅读真实返回的表格、图表和叠加层。`,
+    `解释结果时回到“${item.summary}”，区分计算输出、${dataset?.title ?? '当前数据'}的边界与研究者推断。`,
+    `以${item.title}为起点，改变数据边界、算法或参数，检验结论能否迁移；延伸问题仍须受“${item.content || item.summary}”约束。`,
+  ]
+  const prompts = sectionIndex === 0
+    ? [`${item.title}中的行动者与关系分别是什么？`, ...base.prompts.slice(1)]
+    : sectionIndex === 1 && dataset ? [`${dataset.title}如何定义节点与边？`, ...base.prompts.slice(1)] : base.prompts
+  return { ...base, heading: `${base.heading}｜${item.title}`, body: bodies[sectionIndex], prompts }
+}))
+const section = computed(() => sections.value[index.value])
 const step = (delta: number) => { index.value = Math.max(0, Math.min(CASE_SECTIONS.length - 1, index.value + delta)) }
 function onKey(event: KeyboardEvent) {
+  const target = event.target as HTMLElement | null
+  if (event.repeat || target?.closest('button, a, input, textarea, select, [contenteditable="true"]')) return
   if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') { event.preventDefault(); step(1) }
   if (event.key === 'ArrowLeft' || event.key === 'PageUp') { event.preventDefault(); step(-1) }
 }
-onMounted(async () => {
-  window.addEventListener('keydown', onKey)
-  try { detail.value = await fetchCase(props.slug) }
+async function load(slug: string) {
+  detail.value = null; error.value = ''; index.value = 0
+  try { detail.value = await fetchCase(slug) }
   catch (reason) { error.value = reason instanceof Error ? reason.message : '无法加载演示内容。' }
-})
+}
+watch(() => props.slug, load, { immediate: true })
+onMounted(() => window.addEventListener('keydown', onKey))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 

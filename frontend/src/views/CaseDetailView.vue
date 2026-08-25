@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue'
+import { nextTick, ref, watch } from 'vue'
 import { fetchCase } from '../api/client'
 import type { CaseDetail } from '../api/contracts'
 import { CASE_SECTIONS } from '../content/catalog'
@@ -21,10 +21,12 @@ function onTabKey(event: KeyboardEvent, index: number) {
   if (event.key === 'Home') { event.preventDefault(); selectSection(0, true) }
   if (event.key === 'End') { event.preventDefault(); selectSection(CASE_SECTIONS.length - 1, true) }
 }
-onMounted(async () => {
-  try { detail.value = await fetchCase(props.slug) }
+async function load(slug: string) {
+  detail.value = null; error.value = ''; activeIndex.value = 0
+  try { detail.value = await fetchCase(slug) }
   catch (reason) { error.value = reason instanceof Error ? reason.message : '无法加载案例。' }
-})
+}
+watch(() => props.slug, load, { immediate: true })
 </script>
 
 <template>

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/vue'
+import { fireEvent, render, screen } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, test } from 'vitest'
 import ParameterControls from './ParameterControls.vue'
@@ -19,5 +19,20 @@ describe('registry parameter controls', () => {
     expect(iterations).toHaveValue(3)
     expect(screen.getByRole('checkbox', { name: /是否归一化/ })).toBeChecked()
     expect(screen.getByRole('combobox', { name: /计算方式/ })).toHaveValue('all')
+  })
+
+  test('announces malformed structured JSON and reports the whole parameter form invalid', async () => {
+    const structuredAlgorithm = {
+      ...degreeAlgorithm,
+      parameters: { weights: { type: 'array' as const, default: [1, 2], description: '权重序列。' } },
+    }
+    const view = render(ParameterControls, { props: { algorithm: structuredAlgorithm, modelValue: { weights: [1, 2] } } })
+
+    await fireEvent.update(screen.getByRole('textbox', { name: /权重序列/ }), '[1,')
+
+    expect(screen.getByRole('alert')).toHaveTextContent('weights 必须是有效的 JSON 数组。')
+    const validityEvents = view.emitted('validity') ?? []
+    expect(validityEvents[validityEvents.length - 1]).toEqual([false])
+    expect(view.emitted('update:modelValue')).toBeUndefined()
   })
 })

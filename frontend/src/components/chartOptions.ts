@@ -21,6 +21,14 @@ function heatmap(chart: RunChart, animation: boolean) {
   const data: Array<[string, string, number]> = []
   chart.series.flatMap((series) => series.data).forEach((datum, rowIndex) => {
     if (!isRecord(datum)) return
+    if ('source' in datum && 'target' in datum && 'distance' in datum) {
+      const source = text(datum.source, String(rowIndex + 1))
+      const target = text(datum.target, String(rowIndex + 1))
+      if (!xLabels.includes(target)) xLabels.push(target)
+      if (!yLabels.includes(source)) yLabels.push(source)
+      data.push([target, source, number(datum.distance)])
+      return
+    }
     const row = text(datum.node ?? datum.source ?? datum.row, String(rowIndex + 1))
     if (!yLabels.includes(row)) yLabels.push(row)
     Object.entries(datum).forEach(([column, value]) => {

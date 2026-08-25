@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { fetchCases, fetchModule } from '../api/client'
 import type { CaseSummary, CourseModuleDetail } from '../api/contracts'
 import { moduleEditorial } from '../content/catalog'
@@ -9,13 +9,15 @@ const module = ref<CourseModuleDetail | null>(null)
 const cases = ref<CaseSummary[]>([])
 const error = ref('')
 const editorial = computed(() => moduleEditorial(props.slug))
-onMounted(async () => {
+async function load(slug: string) {
+  module.value = null; cases.value = []; error.value = ''
   try {
-    const [detail, allCases] = await Promise.all([fetchModule(props.slug), fetchCases()])
+    const [detail, allCases] = await Promise.all([fetchModule(slug), fetchCases()])
     module.value = detail
-    cases.value = allCases.filter((item) => item.module === props.slug)
+    cases.value = allCases.filter((item) => item.module === slug)
   } catch (reason) { error.value = reason instanceof Error ? reason.message : '无法加载模块。' }
-})
+}
+watch(() => props.slug, load, { immediate: true })
 </script>
 
 <template>

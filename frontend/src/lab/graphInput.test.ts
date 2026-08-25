@@ -26,4 +26,10 @@ describe('graph input', () => {
       { path: 'edges[0].weight', message: '边权重必须是大于 0 的有限数值。' },
     ])
   })
+
+  test('returns a controlled Chinese issue for a non-object edge', () => {
+    expect(validateGraphLocally({ directed: false, nodes: [{ id: 'a' }], edges: [null] } as never)).toEqual([
+      { path: 'edges[0]', message: '边必须是包含 source 和 target 的对象。' },
+    ])
+  })
 })

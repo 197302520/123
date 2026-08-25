@@ -8,10 +8,12 @@ import { moduleEditorial } from '../content/catalog'
 const modules = ref<CourseModule[]>([])
 const cases = ref<CaseSummary[]>([])
 const error = ref('')
+const loading = ref(true)
 
 onMounted(async () => {
   try { [modules.value, cases.value] = await Promise.all([fetchModules(), fetchCases()]) }
   catch (reason) { error.value = reason instanceof Error ? reason.message : '首页内容暂时无法加载。' }
+  finally { loading.value = false }
 })
 </script>
 
@@ -43,7 +45,8 @@ onMounted(async () => {
     <p v-if="error" class="state-message error" role="alert">{{ error }}</p>
     <section class="section-shell home-modules" aria-labelledby="modules-title">
       <div class="section-heading"><p class="eyebrow">SEVEN LENSES</p><h2 id="modules-title">七个模块，七种观察关系的方式</h2><RouterLink to="/courses">查看完整课程 →</RouterLink></div>
-      <p v-if="!modules.length && !error" class="state-message" role="status">正在装订课程目录…</p>
+      <p v-if="loading" class="state-message" role="status">正在装订课程目录…</p>
+      <p v-else-if="!modules.length && !error" class="state-message empty">课程目录暂未发布，可先进入自由实验室练习。</p>
       <ol v-else class="module-ribbon">
         <li v-for="module in modules" :key="module.slug">
           <RouterLink :to="`/courses/${module.slug}`">
@@ -64,7 +67,8 @@ onMounted(async () => {
           <RouterLink v-for="(item, index) in cases.slice(0, 3)" :key="item.slug" :to="`/cases/${item.slug}`">
             <span>0{{ index + 1 }}</span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small>
           </RouterLink>
-          <p v-if="!cases.length && !error" class="state-message" role="status">正在整理案例索引…</p>
+          <p v-if="loading" class="state-message" role="status">正在整理案例索引…</p>
+          <p v-else-if="!cases.length && !error" class="state-message empty">案例索引暂未发布，可从课程模块了解分析方法。</p>
         </div>
       </div>
     </section>

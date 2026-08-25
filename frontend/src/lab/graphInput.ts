@@ -43,6 +43,10 @@ export function validateGraphLocally(graph: GraphInputSpec): ValidationIssue[] {
     } else ids.add(node.id)
   })
   graph.edges.forEach((edge, index) => {
+    if (!edge || typeof edge !== 'object') {
+      issues.push({ path: `edges[${index}]`, message: '边必须是包含 source 和 target 的对象。' })
+      return
+    }
     if (!ids.has(edge.source)) issues.push({ path: `edges[${index}].source`, message: `节点 '${edge.source}' 不存在。` })
     if (!ids.has(edge.target)) issues.push({ path: `edges[${index}].target`, message: `节点 '${edge.target}' 不存在。` })
     const weight = edge.weight ?? 1

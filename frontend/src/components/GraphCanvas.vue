@@ -12,6 +12,12 @@ const palette = ['#b34a32', '#2d6f68', '#d39a32', '#5e6d45', '#7b537d', '#28758d
 
 function elements(): ElementDefinition[] {
   const overlayNodes = new Map((props.overlay?.nodes ?? []).map((item) => [String(item.node ?? item.id), item]))
+  const overlayEdges = new Set<string>()
+  ;(props.overlay?.edges ?? []).forEach((edge) => {
+    if (typeof edge.source !== 'string' || typeof edge.target !== 'string') return
+    overlayEdges.add(`${edge.source}\u0000${edge.target}`)
+    if (!props.graph.directed) overlayEdges.add(`${edge.target}\u0000${edge.source}`)
+  })
   return [
     ...props.graph.nodes.map((node) => {
       const values = overlayNodes.get(node.id)
@@ -23,7 +29,7 @@ function elements(): ElementDefinition[] {
       }
     }),
     ...props.graph.edges.map((edge, index) => ({
-      data: { id: `edge-${index}`, source: edge.source, target: edge.target, weight: edge.weight ?? 1 },
+      data: { id: `edge-${index}`, source: edge.source, target: edge.target, weight: edge.weight ?? 1, predicted: overlayEdges.has(`${edge.source}\u0000${edge.target}`) ? 1 : 0 },
     })),
   ]
 }
@@ -45,6 +51,7 @@ function renderGraph() {
         width: 'mapData(weight, 0, 5, 1, 5)', 'line-color': '#789087', 'target-arrow-color': '#789087',
         'target-arrow-shape': props.graph.directed ? 'triangle' : 'none', 'curve-style': 'bezier', opacity: 0.72,
       } },
+      { selector: 'edge[predicted = 1]', style: { 'line-color': '#b34a32', 'target-arrow-color': '#b34a32', 'line-style': 'dashed', width: 4, opacity: 1 } },
     ],
     layout: { name: 'cose', animate: allowsMotion(), animationDuration: 450, randomize: false, fit: true, padding: 28 },
     minZoom: 0.35,

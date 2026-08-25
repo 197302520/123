@@ -121,3 +121,56 @@ Automated viewport screenshots could not be captured. `agent-browser 0.35.0` fou
 3. Task 1 currently seeds two public case records. The case library handles any number of API cases and explicit empty/filter states; Task 4 is expected to add the broader runnable case set.
 4. The current backend completes jobs synchronously, while the frontend also supports future `pending` polling without changing the public workflow.
 5. Unrelated untracked `extract_docx.py`, `说明书_提取.txt`, and `.mimosa` content were not edited or staged.
+
+## Post-review corrective pass — 2026-08-26
+
+### Corrected workflow and rendering behavior
+
+- Graph readiness is revoked on the first source-text edit after validation; the run action cannot submit the previously normalized graph. Graph, algorithm, parameters, and seed are deep-cloned before submission and that immutable snapshot now supplies the request, current-result record, IndexedDB history, comparison, provenance display, and reproducibility download.
+- Algorithm/graph/parameter/seed controls are disabled while submitting or polling. Poll delays and all run requests receive one `AbortSignal`; reset, replacement, and unmount abort pending work without a terminal-state update or late history write.
+- Floyd–Warshall heatmaps now consume the backend's long-form `{source,target,distance}` rows. Result edge overlays merge candidate edges into the validated base network; candidate edges are visibly distinguished as high-contrast dashed edges.
+- Comparison now rejects the current run as its own baseline and juxtaposes algorithm/version/seed, every parameter value, and exact backend table rows for the current and selected historical runs.
+- Presentation scenes now derive background, data, method, run/result reading, interpretation, and extension content from the selected case title, summary, content, module, dataset provenance, and metadata. Global shortcuts ignore links and form controls, ignore key repeat, and no longer double-advance a focused button on Space.
+- IndexedDB load/save/delete/clear failures are caught and announced in the local-history region. A completed backend result remains visibly completed if only local persistence fails. Clear-all now requires confirmation.
+- Successful-empty states were added for home modules, home cases, the course library, and an empty algorithm registry. Structured array/object parameters reject malformed or type-mismatched JSON without changing submitted values. Non-object edges receive a controlled Chinese validation issue.
+- Module, case-detail, and presentation views reload on route-prop changes. The file-import input remains keyboard focusable and its enclosing label has an explicit `:focus-within` outline.
+
+### Review RED evidence
+
+Tests were added before these production corrections. The first complete run produced the intended failures:
+
+```text
+npm test -- --reporter=verbose
+Test Files 12 failed | 6 passed (18)
+Tests      22 failed | 24 passed (46)
+Errors     1 unhandled rejection
+```
+
+The unhandled rejection was the deliberate failing IndexedDB-load double, confirming that the prior code leaked local-store failures. Other failures directly exposed stale graph readiness, mutable pending configuration, wrong Floyd and predicted-edge shapes, summary-only comparison, generic presentation content, missing route reactions/empty states, malformed structured-parameter fallback, and absent cancellation.
+
+### Review GREEN and final verification evidence
+
+After the corrections, the expanded suite is green with no unhandled errors:
+
+```text
+npm test -- --reporter=default
+Test Files 18 passed (18)
+Tests      47 passed (47)
+Duration   9.28s
+
+npm run build
+vue-tsc -b && vite build
+✓ 661 modules transformed
+✓ built in 6.33s
+
+python -m pytest backend/tests -q
+130 passed in 4.32s
+
+python backend/manage.py check
+System check identified no issues (0 silenced).
+
+npm audit --omit=dev
+found 0 vulnerabilities
+```
+
+The final diff check reported no whitespace errors. The build still reports the documented non-fatal async `ResultsPanel` chunk warning (607.03 kB minified / 206.41 kB gzip). Browser viewport QA was not retried: the exact prior gap remains—no installed local Chrome/Chromium, and the Chrome-for-Testing download timed out after three retries—so no screenshot or interactive-browser claim is made for this corrective pass.

@@ -4,15 +4,16 @@ import { describe, expect, test, vi } from 'vitest'
 import CaseDetailView from './CaseDetailView.vue'
 
 vi.mock('../api/client', () => ({
-  fetchCase: vi.fn().mockResolvedValue({
-    slug: 'karate',
-    title: '空手道俱乐部网络',
+  fetchCase: vi.fn((slug: string) => Promise.resolve({
+    slug,
+    title: slug === 'dolphins' ? '海豚社交网络' : '空手道俱乐部网络',
     summary: '社区分裂的经典案例。',
     module: 'communities',
     content: '俱乐部在冲突后分裂成两个群体。',
     dataset: { slug: 'karate', title: 'Zachary 数据', provenance: 'Zachary (1977)', metadata: { nodes: 34, edges: 78 } },
-  }),
+  })),
 }))
+import { fetchCase } from '../api/client'
 
 describe('six-section case learning flow', () => {
   test('exposes exactly six keyboard-navigable sections and changes the active lesson', async () => {
@@ -33,5 +34,18 @@ describe('six-section case learning flow', () => {
     await user.keyboard('{ArrowRight}')
     expect(tabs[1]).toHaveAttribute('aria-selected', 'true')
     expect(screen.getByRole('tabpanel')).toHaveTextContent('节点与关系')
+  })
+
+  test('reloads when the case route parameter changes', async () => {
+    const view = render(CaseDetailView, {
+      props: { slug: 'karate' },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true } },
+    })
+    expect(await screen.findByRole('heading', { name: '空手道俱乐部网络' })).toBeVisible()
+
+    await view.rerender({ slug: 'dolphins' })
+
+    expect(await screen.findByRole('heading', { name: '海豚社交网络' })).toBeVisible()
+    expect(fetchCase).toHaveBeenLastCalledWith('dolphins')
   })
 })

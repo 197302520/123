@@ -22,6 +22,7 @@ onMounted(async () => {
     </header>
     <p v-if="loading" class="state-message" role="status">正在加载七个课程模块…</p>
     <div v-else-if="error" class="state-message error" role="alert"><strong>课程暂时无法打开</strong><br>{{ error }}</div>
+    <p v-else-if="!modules.length" class="state-message empty">课程模块暂未发布，请稍后再来，或先进入自由实验室。</p>
     <ol v-else class="course-ledger">
       <li v-for="module in modules" :key="module.slug">
         <RouterLink :to="`/courses/${module.slug}`">

@@ -199,6 +199,8 @@ textarea { resize: vertical; font-family: var(--mono); font-size: .78rem; line-h
 .control-heading > span { font-family: var(--mono); color: var(--oxide-dark); }
 .file-button { display: inline-flex; align-items: center; min-height: 2.5rem; padding: .5rem .8rem; border: 1px solid var(--ink); font-size: .8rem; font-weight: 700; }
 .file-button input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.file-button:focus-within { outline: 3px solid var(--gold); outline-offset: 4px; }
+.file-button.disabled { opacity: .55; cursor: not-allowed; }
 .editor-actions { display: flex; align-items: center; gap: 1rem; margin-block: 1rem; }
 .editor-actions span { font-size: .72rem; color: var(--ink-soft); }
 .graph-editor, .algorithm-picker, .run-console, .results-panel { margin-bottom: 2.5rem; padding: 2rem; border: 1px solid var(--ink); background: rgba(250, 247, 239, .58); }
@@ -258,6 +260,10 @@ th { background: var(--paper-deep); }
 .compare-columns dl, .provenance dl { display: grid; grid-template-columns: auto 1fr; gap: .4rem 1rem; font-size: .76rem; }
 .compare-columns dd, .compare-columns dt, .provenance dd, .provenance dt { margin: 0; overflow-wrap: anywhere; }
 .compare-columns dt, .provenance dt { color: var(--ink-soft); }
+.compare-table { margin-top: 1.25rem; }
+.comparison-results { margin-top: 1.5rem; }
+.comparison-results h4 { margin-bottom: .8rem; font-family: var(--sans); }
+.comparison-results pre { max-height: 18rem; margin: .8rem 0 0; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: .72rem; }
 .provenance { margin-top: 2rem; border-top: 1px solid var(--line); padding-top: 1rem; }
 .provenance summary { cursor: pointer; font-weight: 700; }
 

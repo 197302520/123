@@ -37,8 +37,8 @@ export const fetchAlgorithms = () => requestJson<AlgorithmSpec[]>('/api/algorith
 export const validateGraph = (graph: GraphInputSpec) => requestJson<GraphValidation>('/api/graphs/validate/', {
   method: 'POST', body: JSON.stringify(graph),
 })
-export const submitRun = (request: RunRequest) => requestJson<RunStatus>('/api/runs/', {
-  method: 'POST', body: JSON.stringify(request),
+export const submitRun = (request: RunRequest, signal?: AbortSignal) => requestJson<RunStatus>('/api/runs/', {
+  method: 'POST', body: JSON.stringify(request), signal,
 })
-export const fetchRunStatus = (id: string) => requestJson<RunStatus>(`/api/runs/${encodeURIComponent(id)}/`)
-export const fetchRunResult = (id: string) => requestJson<RunResult>(`/api/runs/${encodeURIComponent(id)}/result/`)
+export const fetchRunStatus = (id: string, signal?: AbortSignal) => requestJson<RunStatus>(`/api/runs/${encodeURIComponent(id)}/`, { signal })
+export const fetchRunResult = (id: string, signal?: AbortSignal) => requestJson<RunResult>(`/api/runs/${encodeURIComponent(id)}/result/`, { signal })

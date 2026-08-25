@@ -1,11 +1,11 @@
 import { render, screen } from '@testing-library/vue'
 import { describe, expect, test } from 'vitest'
 import ResultsPanel from './ResultsPanel.vue'
-import { completedResult } from '../test/fixtures'
+import { completedResult, historyRecord } from '../test/fixtures'
 
 const stubs = {
   ResultChart: { props: ['chart'], template: '<div role="img" :aria-label="`结果图表：${chart.key}`"></div>' },
-  GraphCanvas: { props: ['graph', 'overlay'], template: '<div role="img" aria-label="结果网络叠加图"></div>' },
+  GraphCanvas: { props: ['graph', 'overlay'], template: '<div role="img" aria-label="结果网络叠加图" :data-edges="graph.edges.length"></div>' },
 }
 
 describe('real result rendering', () => {
@@ -24,10 +24,40 @@ describe('real result rendering', () => {
     expect(screen.getByText('本次算法没有返回表格、图表或网络叠加层。')).toBeVisible()
   })
 
-  test('labels current and historical runs in side-by-side comparison', () => {
-    render(ResultsPanel, { props: { result: completedResult, compareResult: { ...completedResult, run_id: 'run-previous' } }, global: { stubs } })
-    expect(screen.getByRole('region', { name: '实验结果对比' })).toHaveTextContent('当前实验')
-    expect(screen.getByRole('region', { name: '实验结果对比' })).toHaveTextContent('对比实验')
-    expect(screen.getByRole('region', { name: '实验结果对比' })).toHaveTextContent('run-previous')
+  test('adds backend-predicted candidate edges to the base graph overlay', () => {
+    const result = {
+      ...completedResult,
+      overlays: [{ key: 'predicted_edges', nodes: [], edges: [{ source: 'a', target: 'c', score: 0.8 }], node_styles: {} }],
+    }
+    render(ResultsPanel, { props: { result }, global: { stubs } })
+
+    expect(screen.getByRole('img', { name: '结果网络叠加图' })).toHaveAttribute('data-edges', '3')
+  })
+
+  test('juxtaposes parameter differences and actual result values for two distinct runs', () => {
+    const currentRecord = { ...historyRecord, parameters: { iterations: 3 }, result: completedResult }
+    const compareRecord = {
+      ...historyRecord,
+      id: 'run-previous',
+      parameters: { iterations: 9 },
+      result: {
+        ...completedResult,
+        run_id: 'run-previous',
+        tables: [{ ...completedResult.tables[0], rows: [{ node: 'a', value: 0.25 }] }],
+      },
+    }
+    render(ResultsPanel, { props: { result: completedResult, currentRecord, compareRecord }, global: { stubs } })
+    const region = screen.getByRole('region', { name: '实验结果对比' })
+
+    expect(region).toHaveTextContent('iterations')
+    expect(region).toHaveTextContent('3')
+    expect(region).toHaveTextContent('9')
+    expect(region).toHaveTextContent('0.5')
+    expect(region).toHaveTextContent('0.25')
+  })
+
+  test('does not compare a run with itself', () => {
+    render(ResultsPanel, { props: { result: completedResult, currentRecord: historyRecord, compareRecord: historyRecord }, global: { stubs } })
+    expect(screen.queryByRole('region', { name: '实验结果对比' })).not.toBeInTheDocument()
   })
 })

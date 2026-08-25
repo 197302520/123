@@ -43,4 +43,25 @@ describe('laboratory run state machine', () => {
 
     expect(states).toEqual(['submitting', 'error'])
   })
+
+  test('cancels polling without fetching or publishing a terminal state after abort', async () => {
+    vi.useFakeTimers()
+    const controller = new AbortController()
+    const states: string[] = []
+    const fetchRunStatus = vi.fn()
+    const pending = executeRun(request, {
+      submitRun: vi.fn().mockResolvedValue({ id: 'run-2', status: 'pending', algorithm: 'centrality.degree', seed: 7 }),
+      fetchRunStatus,
+      fetchRunResult: vi.fn(),
+    }, (state) => states.push(state), { intervalMs: 1000, signal: controller.signal })
+
+    await vi.advanceTimersByTimeAsync(0)
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+    await vi.advanceTimersByTimeAsync(2000)
+
+    expect(fetchRunStatus).not.toHaveBeenCalled()
+    expect(states).toEqual(['submitting', 'polling'])
+    vi.useRealTimers()
+  })
 })

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
-import type { AlgorithmSpec, GraphSpec, HistoryRecord, RunResult } from '../api/contracts'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { AlgorithmSpec, GraphSpec, HistoryRecord, RunRequest, RunResult } from '../api/contracts'
 import { fetchAlgorithms, fetchRunResult, fetchRunStatus, submitRun } from '../api/client'
 import FormulaBlock from '../components/FormulaBlock.vue'
 import GraphEditor from '../components/GraphEditor.vue'
@@ -30,22 +30,30 @@ const graphReady = ref(false)
 const editorVersion = ref(0)
 const phase = ref<RunPhase>('idle')
 const runError = ref('')
+const historyError = ref('')
 const result = ref<RunResult | null>(null)
+const currentRecord = ref<HistoryRecord | null>(null)
 const records = ref<HistoryRecord[]>([])
 const historyLoading = ref(true)
 const compareRecord = ref<HistoryRecord | null>(null)
+const parametersValid = ref(true)
+let activeRunController: AbortController | null = null
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
 const selectedAlgorithm = computed(() => algorithms.value.find((item) => item.key === selectedKey.value) ?? null)
 const graphType = computed(() => graph.value.directed ? 'directed' : 'undirected')
 const incompatible = computed(() => selectedAlgorithm.value ? !selectedAlgorithm.value.supported_graph_types.includes(graphType.value) : false)
 const running = computed(() => phase.value === 'submitting' || phase.value === 'polling')
-const canRun = computed(() => Boolean(selectedAlgorithm.value && graphReady.value && !incompatible.value && !running.value))
+const canRun = computed(() => Boolean(selectedAlgorithm.value && graphReady.value && parametersValid.value && !incompatible.value && !running.value))
 
-watch(selectedAlgorithm, (algorithm) => { if (algorithm) parameters.value = defaultsFor(algorithm) })
+watch(selectedAlgorithm, (algorithm) => { parametersValid.value = true; if (algorithm) parameters.value = defaultsFor(algorithm) })
 
 onMounted(async () => {
-  const historyPromise = listHistory().then((items) => { records.value = items }).finally(() => { historyLoading.value = false })
+  const historyPromise = (async () => {
+    try { records.value = await listHistory() }
+    catch (reason) { historyError.value = reason instanceof Error ? reason.message : '无法读取本机实验历史。' }
+    finally { historyLoading.value = false }
+  })()
   try {
     algorithms.value = await fetchAlgorithms()
     selectedKey.value = algorithms.value.find((item) => item.key === 'centrality.degree')?.key ?? algorithms.value[0]?.key ?? ''
@@ -53,41 +61,66 @@ onMounted(async () => {
   finally { registryLoading.value = false }
   await historyPromise
 })
+onBeforeUnmount(() => activeRunController?.abort())
 
 function onValidated(value: GraphSpec) { graph.value = value; graphReady.value = true; phase.value = 'idle'; runError.value = '' }
 function onInvalid() { graphReady.value = false; phase.value = 'idle' }
 
 async function run() {
   if (!selectedAlgorithm.value || !canRun.value) return
-  runError.value = ''; result.value = null; compareRecord.value = null
+  activeRunController?.abort()
+  const controller = new AbortController()
+  activeRunController = controller
+  const algorithm = clone(selectedAlgorithm.value)
+  const request: RunRequest = clone({ algorithm: algorithm.key, graph: graph.value, parameters: parameters.value, seed: seed.value })
+  runError.value = ''; historyError.value = ''; result.value = null; currentRecord.value = null; compareRecord.value = null
   try {
-    const completed = await executeRun({ algorithm: selectedAlgorithm.value.key, graph: graph.value, parameters: parameters.value, seed: seed.value }, { submitRun, fetchRunStatus, fetchRunResult }, (next) => { phase.value = next })
+    const completed = await executeRun(request, { submitRun, fetchRunStatus, fetchRunResult }, (next) => {
+      if (activeRunController === controller && !controller.signal.aborted) phase.value = next
+    }, { signal: controller.signal })
+    if (controller.signal.aborted || activeRunController !== controller) return
     result.value = completed
     const record: HistoryRecord = {
       id: completed.run_id,
       createdAt: new Date().toISOString(),
-      algorithm: selectedAlgorithm.value.key,
-      algorithmName: selectedAlgorithm.value.name,
-      parameters: clone(parameters.value),
-      seed: seed.value,
-      graph: clone(graph.value),
+      algorithm: algorithm.key,
+      algorithmName: algorithm.name,
+      parameters: request.parameters,
+      seed: request.seed ?? null,
+      graph: request.graph as GraphSpec,
       result: completed,
     }
-    await saveHistory(record)
-    records.value = [record, ...records.value.filter((item) => item.id !== record.id)]
-  } catch (reason) { runError.value = reason instanceof Error ? reason.message : '运行失败，请检查输入后重试。' }
+    currentRecord.value = record
+    try {
+      await saveHistory(record)
+      records.value = [record, ...records.value.filter((item) => item.id !== record.id)]
+    } catch (reason) { historyError.value = reason instanceof Error ? reason.message : '结果已完成，但无法写入本机历史。' }
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === 'AbortError') return
+    if (activeRunController === controller) runError.value = reason instanceof Error ? reason.message : '运行失败，请检查输入后重试。'
+  } finally { if (activeRunController === controller) activeRunController = null }
 }
 
 function resetExperiment() {
+  activeRunController?.abort(); activeRunController = null
   graph.value = structuredClone(LEARNING_EXAMPLE_GRAPH)
   graphReady.value = false
   if (selectedAlgorithm.value) parameters.value = defaultsFor(selectedAlgorithm.value)
-  seed.value = 7; phase.value = 'idle'; runError.value = ''; result.value = null; compareRecord.value = null
+  seed.value = 7; phase.value = 'idle'; runError.value = ''; historyError.value = ''; result.value = null; currentRecord.value = null; compareRecord.value = null; parametersValid.value = true
   editorVersion.value += 1
 }
 
-async function removeRecord(id: string) { await deleteHistory(id); records.value = records.value.filter((item) => item.id !== id); if (compareRecord.value?.id === id) compareRecord.value = null }
-async function clearRecords() { await clearHistory(); records.value = []; compareRecord.value = null }
+async function removeRecord(id: string) {
+  historyError.value = ''
+  try { await deleteHistory(id); records.value = records.value.filter((item) => item.id !== id); if (compareRecord.value?.id === id) compareRecord.value = null }
+  catch (reason) { historyError.value = reason instanceof Error ? reason.message : '无法删除本机记录。' }
+}
+async function clearRecords() {
+  historyError.value = ''
+  try { await clearHistory(); records.value = []; compareRecord.value = null }
+  catch (reason) { historyError.value = reason instanceof Error ? reason.message : '无法清空本机历史。' }
+}
+function selectComparison(record: HistoryRecord) { if (record.id !== result.value?.run_id) compareRecord.value = record }
 
 const categoryName = (key: string) => ({ graph: '图结构', model: '随机模型', centrality: '中心性', community: '社区发现', robustness: '鲁棒性', link: '链接预测', opinion: '意见动力学', dynamic: '动态网络', embedding: '图嵌入', text: '文本建网', export: '图导出' }[key.split('.')[0]] ?? '其他方法')
 </script>
@@ -98,31 +131,32 @@ const categoryName = (key: string) => ({ graph: '图结构', model: '随机模�
 
     <div class="lab-workbench">
       <div class="lab-main">
-        <GraphEditor :key="editorVersion" v-model="graph" learning-example @validated="onValidated" @invalid="onInvalid" />
+        <GraphEditor :key="editorVersion" v-model="graph" learning-example :disabled="running" @validated="onValidated" @invalid="onInvalid" />
 
         <section class="algorithm-picker" aria-labelledby="algorithm-heading">
           <div class="control-heading"><div><p class="eyebrow">REGISTRY</p><h2 id="algorithm-heading">二、选择真实算法</h2></div><span v-if="selectedAlgorithm">v{{ selectedAlgorithm.version }}</span></div>
           <p v-if="registryLoading" class="state-message compact" role="status">正在读取后端算法注册表…</p>
           <p v-else-if="registryError" class="state-message error" role="alert">{{ registryError }}</p>
           <template v-else>
-            <label class="algorithm-select">算法<select v-model="selectedKey"><option v-for="algorithm in algorithms" :key="algorithm.key" :value="algorithm.key">{{ algorithm.name }}</option></select></label>
+            <label class="algorithm-select">算法<select v-model="selectedKey" :disabled="running || !algorithms.length"><option v-if="!algorithms.length" value="">暂无可用算法</option><option v-for="algorithm in algorithms" :key="algorithm.key" :value="algorithm.key">{{ algorithm.name }}</option></select></label>
+            <p v-if="!algorithms.length" class="state-message compact empty">算法注册表当前为空，请联系课程教师配置算法后再运行。</p>
             <div v-if="selectedAlgorithm" class="algorithm-notes"><div><span>{{ categoryName(selectedAlgorithm.key) }}</span><h3>{{ selectedAlgorithm.name }}</h3><p>{{ selectedAlgorithm.description }}</p><p>{{ selectedAlgorithm.explanation }}</p></div><FormulaBlock :formula="selectedAlgorithm.formula" /></div>
             <p v-if="incompatible" class="validation-error" role="alert">当前算法不支持{{ graph.directed ? '有向图' : '无向图' }}，请选择兼容方法或修改图类型。</p>
-            <ParameterControls v-if="selectedAlgorithm" v-model="parameters" :algorithm="selectedAlgorithm" />
+            <ParameterControls v-if="selectedAlgorithm" v-model="parameters" :algorithm="selectedAlgorithm" :disabled="running" @validity="parametersValid = $event" />
           </template>
         </section>
 
         <section class="run-console" aria-labelledby="run-heading">
-          <div><p class="eyebrow">RUN & TRACE</p><h2 id="run-heading">三、运行并留下证据链</h2><label>随机种子<input v-model.number="seed" type="number" step="1" /></label></div>
+          <div><p class="eyebrow">RUN & TRACE</p><h2 id="run-heading">三、运行并留下证据链</h2><label>随机种子<input v-model.number="seed" :disabled="running" type="number" step="1" /></label></div>
           <div><RunStatus :phase="phase" :message="runError" /><button type="button" class="button primary run-button" :disabled="!canRun" @click="run">{{ running ? '正在提交…' : '运行真实算法' }}</button><p v-if="!graphReady" class="field-help">先在第一步通过图数据校验。</p></div>
         </section>
         <p v-if="runError" class="validation-error" role="alert">{{ runError }}</p>
 
-        <div v-if="result" class="result-actions"><button type="button" class="button secondary" @click="downloadReproducibilityBundle(records.find((item) => item.id === result?.run_id)!)" :disabled="!records.some((item) => item.id === result?.run_id)">下载本次复现包</button><p>包含输入图、参数、种子、算法版本与完整结果。</p></div>
-        <ResultsPanel v-if="result" :result="result" :compare-result="compareRecord?.result" />
+        <div v-if="result" class="result-actions"><button type="button" class="button secondary" @click="currentRecord && downloadReproducibilityBundle(currentRecord)" :disabled="!currentRecord">下载本次复现包</button><p>包含输入图、参数、种子、算法版本与完整结果。</p></div>
+        <ResultsPanel v-if="result" :result="result" :current-record="currentRecord" :compare-record="compareRecord" />
       </div>
 
-      <HistoryPanel :records="records" :loading="historyLoading" :active-compare-id="compareRecord?.id" @compare="compareRecord = $event" @remove="removeRecord" @clear="clearRecords" />
+      <HistoryPanel :records="records" :loading="historyLoading" :error="historyError" :current-run-id="result?.run_id" :active-compare-id="compareRecord?.id" @compare="selectComparison" @remove="removeRecord" @clear="clearRecords" />
     </div>
   </div>
 </template>

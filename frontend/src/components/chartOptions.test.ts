@@ -2,10 +2,15 @@ import { describe, expect, test } from 'vitest'
 import { chartOptions } from './chartOptions'
 
 describe('backend chart conversion', () => {
-  test('turns Floyd matrix rows into ECharts heatmap triples', () => {
+  test('turns backend Floyd long-form rows into ECharts heatmap triples', () => {
     const options = chartOptions({
       key: 'distance_heatmap', type: 'heatmap',
-      series: [{ name: 'distance', data: [{ node: 'a', a: 0, b: 1 }, { node: 'b', a: 1, b: 0 }] }],
+      series: [{ name: 'distance', data: [
+        { source: 'a', target: 'a', distance: 0 },
+        { source: 'a', target: 'b', distance: 1 },
+        { source: 'b', target: 'a', distance: 1 },
+        { source: 'b', target: 'b', distance: 0 },
+      ] }],
     }, false) as Record<string, any>
 
     expect(options.animation).toBe(false)
