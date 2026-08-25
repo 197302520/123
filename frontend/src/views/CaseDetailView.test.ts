@@ -48,4 +48,25 @@ describe('six-section case learning flow', () => {
     expect(await screen.findByRole('heading', { name: '海豚社交网络' })).toBeVisible()
     expect(fetchCase).toHaveBeenLastCalledWith('dolphins')
   })
+
+  test('does not let an older case request overwrite a newer route', async () => {
+    let resolveOlder!: (value: any) => void
+    vi.mocked(fetchCase)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOlder = resolve }))
+      .mockResolvedValueOnce({
+        slug: 'dolphins', title: '海豚社交网络', summary: '海豚社群边界', module: 'communities', content: '新案例', dataset: null,
+      })
+    const view = render(CaseDetailView, {
+      props: { slug: 'karate' },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true } },
+    })
+
+    await view.rerender({ slug: 'dolphins' })
+    expect(await screen.findByRole('heading', { name: '海豚社交网络' })).toBeVisible()
+    resolveOlder({ slug: 'karate', title: '过期空手道案例', summary: '旧数据', module: 'communities', content: '旧案例', dataset: null })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(screen.getByRole('heading', { name: '海豚社交网络' })).toBeVisible()
+    expect(screen.queryByRole('heading', { name: '过期空手道案例' })).not.toBeInTheDocument()
+  })
 })

@@ -8,6 +8,7 @@ const props = defineProps<{ slug: string }>()
 const detail = ref<CaseDetail | null>(null)
 const error = ref('')
 const index = ref(0)
+let loadRevision = 0
 const sections = computed(() => CASE_SECTIONS.map((base, sectionIndex) => {
   if (!detail.value) return base
   const item = detail.value
@@ -35,13 +36,16 @@ function onKey(event: KeyboardEvent) {
   if (event.key === 'ArrowLeft' || event.key === 'PageUp') { event.preventDefault(); step(-1) }
 }
 async function load(slug: string) {
+  const revision = ++loadRevision
   detail.value = null; error.value = ''; index.value = 0
-  try { detail.value = await fetchCase(slug) }
-  catch (reason) { error.value = reason instanceof Error ? reason.message : '无法加载演示内容。' }
+  try {
+    const response = await fetchCase(slug)
+    if (revision === loadRevision) detail.value = response
+  } catch (reason) { if (revision === loadRevision) error.value = reason instanceof Error ? reason.message : '无法加载演示内容。' }
 }
 watch(() => props.slug, load, { immediate: true })
 onMounted(() => window.addEventListener('keydown', onKey))
-onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
+onBeforeUnmount(() => { loadRevision += 1; window.removeEventListener('keydown', onKey) })
 </script>
 
 <template>

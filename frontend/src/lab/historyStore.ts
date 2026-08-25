@@ -27,37 +27,41 @@ function complete(transaction: IDBTransaction): Promise<void> {
 
 export async function saveHistory(record: HistoryRecord): Promise<void> {
   const database = await openHistory()
-  const transaction = database.transaction(STORE, 'readwrite')
-  transaction.objectStore(STORE).put(record)
-  await complete(transaction)
-  database.close()
+  try {
+    const transaction = database.transaction(STORE, 'readwrite')
+    transaction.objectStore(STORE).put(record)
+    await complete(transaction)
+  } finally { database.close() }
 }
 
 export async function listHistory(): Promise<HistoryRecord[]> {
   const database = await openHistory()
-  const transaction = database.transaction(STORE, 'readonly')
-  const request = transaction.objectStore(STORE).getAll()
-  const rows = await new Promise<HistoryRecord[]>((resolve, reject) => {
-    request.onsuccess = () => resolve(request.result as HistoryRecord[])
-    request.onerror = () => reject(request.error ?? new Error('无法读取本地实验历史。'))
-  })
-  await complete(transaction)
-  database.close()
-  return rows.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  try {
+    const transaction = database.transaction(STORE, 'readonly')
+    const request = transaction.objectStore(STORE).getAll()
+    const rows = await new Promise<HistoryRecord[]>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result as HistoryRecord[])
+      request.onerror = () => reject(request.error ?? new Error('无法读取本地实验历史。'))
+    })
+    await complete(transaction)
+    return rows.sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+  } finally { database.close() }
 }
 
 export async function deleteHistory(id: string): Promise<void> {
   const database = await openHistory()
-  const transaction = database.transaction(STORE, 'readwrite')
-  transaction.objectStore(STORE).delete(id)
-  await complete(transaction)
-  database.close()
+  try {
+    const transaction = database.transaction(STORE, 'readwrite')
+    transaction.objectStore(STORE).delete(id)
+    await complete(transaction)
+  } finally { database.close() }
 }
 
 export async function clearHistory(): Promise<void> {
   const database = await openHistory()
-  const transaction = database.transaction(STORE, 'readwrite')
-  transaction.objectStore(STORE).clear()
-  await complete(transaction)
-  database.close()
+  try {
+    const transaction = database.transaction(STORE, 'readwrite')
+    transaction.objectStore(STORE).clear()
+    await complete(transaction)
+  } finally { database.close() }
 }

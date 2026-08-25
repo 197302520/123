@@ -28,6 +28,7 @@ const seed = ref<number | null>(7)
 const graph = ref<GraphSpec>(structuredClone(LEARNING_EXAMPLE_GRAPH))
 const graphReady = ref(false)
 const editorVersion = ref(0)
+const parameterVersion = ref(0)
 const phase = ref<RunPhase>('idle')
 const runError = ref('')
 const historyError = ref('')
@@ -108,6 +109,7 @@ function resetExperiment() {
   if (selectedAlgorithm.value) parameters.value = defaultsFor(selectedAlgorithm.value)
   seed.value = 7; phase.value = 'idle'; runError.value = ''; historyError.value = ''; result.value = null; currentRecord.value = null; compareRecord.value = null; parametersValid.value = true
   editorVersion.value += 1
+  parameterVersion.value += 1
 }
 
 async function removeRecord(id: string) {
@@ -142,7 +144,7 @@ const categoryName = (key: string) => ({ graph: '图结构', model: '随机模�
             <p v-if="!algorithms.length" class="state-message compact empty">算法注册表当前为空，请联系课程教师配置算法后再运行。</p>
             <div v-if="selectedAlgorithm" class="algorithm-notes"><div><span>{{ categoryName(selectedAlgorithm.key) }}</span><h3>{{ selectedAlgorithm.name }}</h3><p>{{ selectedAlgorithm.description }}</p><p>{{ selectedAlgorithm.explanation }}</p></div><FormulaBlock :formula="selectedAlgorithm.formula" /></div>
             <p v-if="incompatible" class="validation-error" role="alert">当前算法不支持{{ graph.directed ? '有向图' : '无向图' }}，请选择兼容方法或修改图类型。</p>
-            <ParameterControls v-if="selectedAlgorithm" v-model="parameters" :algorithm="selectedAlgorithm" :disabled="running" @validity="parametersValid = $event" />
+            <ParameterControls v-if="selectedAlgorithm" :key="`${selectedAlgorithm.key}-${parameterVersion}`" v-model="parameters" :algorithm="selectedAlgorithm" :disabled="running" @validity="parametersValid = $event" />
           </template>
         </section>
 

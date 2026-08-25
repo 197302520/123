@@ -22,4 +22,11 @@ describe('history comparison and destructive actions', () => {
     expect(confirm).toHaveBeenCalled()
     expect(view.emitted('clear')).toBeUndefined()
   })
+
+  test('shows a load error without simultaneously claiming history is empty', () => {
+    render(HistoryPanel, { props: { records: [], loading: false, error: '读取失败' } })
+
+    expect(screen.getByRole('alert', { name: '本机历史错误' })).toHaveTextContent('读取失败')
+    expect(screen.queryByText('还没有实验记录。完成一次真实运行后，它会出现在这里。')).not.toBeInTheDocument()
+  })
 })

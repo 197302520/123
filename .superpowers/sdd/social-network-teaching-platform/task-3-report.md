@@ -174,3 +174,53 @@ found 0 vulnerabilities
 ```
 
 The final diff check reported no whitespace errors. The build still reports the documented non-fatal async `ResultsPanel` chunk warning (607.03 kB minified / 206.41 kB gzip). Browser viewport QA was not retried: the exact prior gap remains—no installed local Chrome/Chromium, and the Chrome-for-Testing download timed out after three retries—so no screenshot or interactive-browser claim is made for this corrective pass.
+
+## Second post-review corrective pass — 2026-08-26
+
+### Backend-shape and lifecycle corrections
+
+- Overlay rendering now distinguishes full graph replacements from additive evidence. `generated_graph` (ER/WS/BA) and `extracted_graph` (text extraction) render only the backend-returned nodes and edges, including their backend provenance-directedness; `predicted_edges`, centrality, opinion, HITS, robustness, and community overlays retain the validated input graph and add visual evidence to it.
+- Every backend overlay key has an explicit classroom-readable caption and executable mapping coverage. HITS uses hub score for node size and authority score for node color plus an `H / A` label. Robustness uses inverse removal order for size/color and labels the exact removal position. Centrality/opinion values control size, all community variants control color, and predicted relations are dashed.
+- Floyd heatmaps preserve a zero diagonal, finite path lengths, and `null` unreachable distances as distinct values. The ECharts tooltip reports `不可达` for `null` instead of coercing it to zero; user-provided node labels are escaped before tooltip HTML rendering.
+- Graph validation now combines an `AbortController` with a monotonically increasing source revision. Editing, importing, starting a replacement validation, or unmounting invalidates the older request, so late responses cannot normalize the preview or mark stale source text ready.
+- Whole-experiment reset remounts the parameter editor, clears structured JSON errors, restores registry defaults, and synchronizes parent validity before the graph is revalidated.
+- History error and empty states are mutually exclusive. IndexedDB connections close from `finally` for success, request failure, transaction failure, and synchronous structured-clone failure. File import read failures are caught, invalidate readiness, and announce a controlled Chinese error.
+- Module, case, and presentation loaders use request revisions; a slower response for an older route can no longer replace the latest slug content.
+
+### Second review RED / GREEN evidence
+
+The review tests were written against the committed implementation first. The initial targeted RED captured the production failures:
+
+```text
+npm test -- <10 review test files> --reporter=dot
+Test Files 8 failed | 2 passed (10)
+Tests      21 failed | 30 passed (51)
+Errors     1 unhandled file-read rejection
+```
+
+The route-race tests were then strengthened to wait until the deliberately delayed older response had completed its DOM update; all three failed by displaying the obsolete module/case/presentation. After implementation, the same targeted set passed `51/51`, and expanded Cytoscape schema coverage remained green.
+
+Fresh final verification:
+
+```text
+npm test -- --reporter=default
+Test Files 19 passed (19)
+Tests      75 passed (75)
+Duration   8.96s
+
+npm run build
+vue-tsc -b && vite build
+✓ 661 modules transformed
+✓ built in 6.63s
+
+python -m pytest backend/tests -q
+130 passed in 3.73s
+
+python backend/manage.py check
+System check identified no issues (0 silenced).
+
+npm audit --omit=dev
+found 0 vulnerabilities
+```
+
+The only build concern remains the non-fatal async `ResultsPanel` chunk warning, now 608.76 kB minified / 207.24 kB gzip. The previously documented browser QA gap is unchanged and no new visual-browser claim is made.

@@ -135,6 +135,26 @@ describe('free laboratory workflow', () => {
     expect(submitRun).not.toHaveBeenCalled()
   })
 
+  test('whole reset clears structured parameter errors and synchronizes run validity', async () => {
+    vi.mocked(fetchAlgorithms).mockResolvedValue([{
+      ...degreeAlgorithm,
+      parameters: { weights: { type: 'array', default: [1, 2], description: '权重序列。' } },
+    }])
+    const user = userEvent.setup()
+    renderLab()
+    await screen.findByRole('option', { name: '度中心性' })
+    await user.click(screen.getByRole('button', { name: '校验图数据' }))
+    await fireEvent.update(screen.getByRole('textbox', { name: /权重序列/ }), '[1,')
+    expect(screen.getByRole('button', { name: '运行真实算法' })).toBeDisabled()
+
+    await user.click(screen.getByRole('button', { name: '重置整个实验' }))
+
+    expect(screen.queryByText('weights 必须是有效的 JSON 数组。')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /权重序列/ })).toHaveValue('[\n  1,\n  2\n]')
+    await user.click(screen.getByRole('button', { name: '校验图数据' }))
+    expect(screen.getByRole('button', { name: '运行真实算法' })).toBeEnabled()
+  })
+
   test('aborts an in-flight submission on unmount and never saves a late result', async () => {
     let capturedSignal: AbortSignal | undefined
     vi.mocked(submitRun).mockImplementation((_request, signal) => {

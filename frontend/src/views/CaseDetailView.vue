@@ -10,6 +10,7 @@ const detail = ref<CaseDetail | null>(null)
 const error = ref('')
 const activeIndex = ref(0)
 const tabRefs = ref<HTMLButtonElement[]>([])
+let loadRevision = 0
 
 function selectSection(index: number, focus = false) {
   activeIndex.value = (index + CASE_SECTIONS.length) % CASE_SECTIONS.length
@@ -22,9 +23,12 @@ function onTabKey(event: KeyboardEvent, index: number) {
   if (event.key === 'End') { event.preventDefault(); selectSection(CASE_SECTIONS.length - 1, true) }
 }
 async function load(slug: string) {
+  const revision = ++loadRevision
   detail.value = null; error.value = ''; activeIndex.value = 0
-  try { detail.value = await fetchCase(slug) }
-  catch (reason) { error.value = reason instanceof Error ? reason.message : '无法加载案例。' }
+  try {
+    const response = await fetchCase(slug)
+    if (revision === loadRevision) detail.value = response
+  } catch (reason) { if (revision === loadRevision) error.value = reason instanceof Error ? reason.message : '无法加载案例。' }
 }
 watch(() => props.slug, load, { immediate: true })
 </script>

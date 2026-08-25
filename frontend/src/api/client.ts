@@ -34,8 +34,8 @@ export const fetchModule = (slug: string) => requestJson<CourseModuleDetail>(`/a
 export const fetchCases = () => requestJson<CaseSummary[]>('/api/cases/')
 export const fetchCase = (slug: string) => requestJson<CaseDetail>(`/api/cases/${encodeURIComponent(slug)}/`)
 export const fetchAlgorithms = () => requestJson<AlgorithmSpec[]>('/api/algorithms/')
-export const validateGraph = (graph: GraphInputSpec) => requestJson<GraphValidation>('/api/graphs/validate/', {
-  method: 'POST', body: JSON.stringify(graph),
+export const validateGraph = (graph: GraphInputSpec, signal?: AbortSignal) => requestJson<GraphValidation>('/api/graphs/validate/', {
+  method: 'POST', body: JSON.stringify(graph), signal,
 })
 export const submitRun = (request: RunRequest, signal?: AbortSignal) => requestJson<RunStatus>('/api/runs/', {
   method: 'POST', body: JSON.stringify(request), signal,

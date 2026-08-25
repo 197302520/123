@@ -47,4 +47,32 @@ describe('graph validation errors', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent("edges[0].target：节点 'z' 不存在。")
     expect(view.emitted('validated')).toBeUndefined()
   })
+
+  test('ignores an older server validation response after the source text changes', async () => {
+    let resolveValidation!: (value: { valid: true; errors: never[]; graph: typeof exampleGraph }) => void
+    vi.mocked(validateGraph).mockImplementation(() => new Promise((resolve) => { resolveValidation = resolve }))
+    const view = render(GraphEditor, { props: { modelValue: exampleGraph }, global: { stubs: { GraphCanvas: true } } })
+    const user = userEvent.setup()
+
+    await user.click(screen.getByRole('button', { name: '校验图数据' }))
+    await fireEvent.update(screen.getByRole('textbox', { name: '粘贴图数据' }), '新甲 新乙')
+    resolveValidation({ valid: true, errors: [], graph: exampleGraph })
+    await Promise.resolve()
+
+    expect(view.emitted('validated')).toBeUndefined()
+    expect(screen.queryByText(/校验通过/)).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: '粘贴图数据' })).toHaveValue('新甲 新乙')
+  })
+
+  test('announces a controlled Chinese error when an imported file cannot be read', async () => {
+    const file = new File(['broken'], 'broken.json', { type: 'application/json' })
+    Object.defineProperty(file, 'text', { value: vi.fn().mockRejectedValue(new Error('disk failure')) })
+    const view = render(GraphEditor, { props: { modelValue: exampleGraph }, global: { stubs: { GraphCanvas: true } } })
+
+    await userEvent.setup().upload(screen.getByLabelText('导入文件'), file)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('无法读取文件，请确认文件仍可访问后重试。')
+    const invalidEvents = view.emitted('invalid') ?? []
+    expect(invalidEvents[invalidEvents.length - 1]).toEqual(['无法读取文件，请确认文件仍可访问后重试。'])
+  })
 })

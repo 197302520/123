@@ -9,9 +9,15 @@ const container = ref<HTMLDivElement | null>(null)
 let instance: Core | null = null
 
 const palette = ['#b34a32', '#2d6f68', '#d39a32', '#5e6d45', '#7b537d', '#28758d']
+const metricPalette = ['#d39a32', '#5e8d82', '#28758d', '#7b537d', '#b34a32']
+const finite = (value: unknown, fallback = 0) => typeof value === 'number' && Number.isFinite(value) ? value : fallback
+const normalized = (value: unknown) => Math.max(0, Math.min(1, finite(value)))
+const metricColor = (value: unknown) => metricPalette[Math.round(normalized(value) * (metricPalette.length - 1))]
+const metricLabel = (value: unknown) => finite(value).toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
 
 function elements(): ElementDefinition[] {
   const overlayNodes = new Map((props.overlay?.nodes ?? []).map((item) => [String(item.node ?? item.id), item]))
+  const removalCount = Math.max(0, ...(props.overlay?.nodes ?? []).map((item) => finite(item.order)))
   const overlayEdges = new Set<string>()
   ;(props.overlay?.edges ?? []).forEach((edge) => {
     if (typeof edge.source !== 'string' || typeof edge.target !== 'string') return
@@ -23,9 +29,21 @@ function elements(): ElementDefinition[] {
       const values = overlayNodes.get(node.id)
       const style = props.overlay?.node_styles?.[node.id]
       const community = Number(style?.community ?? 0)
-      const value = Number(values?.value ?? values?.opinion ?? 0)
+      let value = normalized(values?.value ?? values?.opinion)
+      let color = palette[Math.abs(community) % palette.length]
+      let label = node.label ?? node.id
+      if (props.overlay?.key === 'hits' && values) {
+        value = normalized(values.hub)
+        color = metricColor(values.authority)
+        label = `${label} · H ${metricLabel(values.hub)} · A ${metricLabel(values.authority)}`
+      } else if (props.overlay?.key === 'removal_order' && values) {
+        const order = finite(values.order)
+        value = removalCount ? (removalCount - order + 1) / removalCount : 0
+        color = metricColor(value)
+        label = `${label} · 第 ${order} 位移除`
+      }
       return {
-        data: { id: node.id, label: node.label ?? node.id, value, color: palette[Math.abs(community) % palette.length] },
+        data: { id: node.id, label, value, color },
       }
     }),
     ...props.graph.edges.map((edge, index) => ({

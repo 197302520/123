@@ -4,6 +4,8 @@ type Datum = Record<string, unknown> | string | number
 const isRecord = (value: Datum): value is Record<string, unknown> => typeof value === 'object' && value !== null
 const text = (value: unknown, fallback: string) => value === undefined || value === null ? fallback : String(value)
 const number = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : Number(value) || 0
+const finiteOrNull = (value: unknown) => typeof value === 'number' && Number.isFinite(value) ? value : null
+const escapeHtml = (value: unknown) => String(value).replace(/[&<>"']/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character] ?? character))
 
 function base(animation: boolean) {
   return {
@@ -18,7 +20,7 @@ function base(animation: boolean) {
 function heatmap(chart: RunChart, animation: boolean) {
   const xLabels: string[] = []
   const yLabels: string[] = []
-  const data: Array<[string, string, number]> = []
+  const data: Array<[string, string, number | null]> = []
   chart.series.flatMap((series) => series.data).forEach((datum, rowIndex) => {
     if (!isRecord(datum)) return
     if ('source' in datum && 'target' in datum && 'distance' in datum) {
@@ -26,7 +28,7 @@ function heatmap(chart: RunChart, animation: boolean) {
       const target = text(datum.target, String(rowIndex + 1))
       if (!xLabels.includes(target)) xLabels.push(target)
       if (!yLabels.includes(source)) yLabels.push(source)
-      data.push([target, source, number(datum.distance)])
+      data.push([target, source, finiteOrNull(datum.distance)])
       return
     }
     const row = text(datum.node ?? datum.source ?? datum.row, String(rowIndex + 1))
@@ -37,10 +39,17 @@ function heatmap(chart: RunChart, animation: boolean) {
       data.push([column, row, value])
     })
   })
-  const values = data.map((item) => item[2])
+  const values = data.map((item) => item[2]).filter((value): value is number => typeof value === 'number')
   return {
     ...base(animation),
-    tooltip: { position: 'top' },
+    tooltip: {
+      position: 'top',
+      formatter: (parameter: { value?: unknown }) => {
+        const value = Array.isArray(parameter.value) ? parameter.value : []
+        const distance = value[2]
+        return `${escapeHtml(value[1] ?? '')} → ${escapeHtml(value[0] ?? '')}：${distance === null || distance === undefined ? '不可达' : escapeHtml(distance)}`
+      },
+    },
     xAxis: { type: 'category', data: xLabels, splitArea: { show: true } },
     yAxis: { type: 'category', data: yLabels, splitArea: { show: true } },
     visualMap: { min: Math.min(...values, 0), max: Math.max(...values, 1), calculable: true, orient: 'horizontal', left: 'center', bottom: 0 },

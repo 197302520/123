@@ -13,10 +13,49 @@ function display(value: unknown): string {
   return String(value)
 }
 
+const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value))
+const replacementKeys = new Set(['generated_graph', 'extracted_graph'])
+
+function replacementDirected(overlay: RunOverlay): boolean {
+  if (overlay.key === 'generated_graph') {
+    const generated = props.result.provenance.generated_graph
+    if (isRecord(generated) && typeof generated.directed === 'boolean') return generated.directed
+  }
+  if (overlay.key === 'extracted_graph') {
+    const extraction = props.result.provenance.extraction
+    const extractedGraph = isRecord(extraction) ? extraction.graph : null
+    if (isRecord(extractedGraph) && typeof extractedGraph.directed === 'boolean') return extractedGraph.directed
+  }
+  return props.result.validation.graph.directed
+}
+
+function overlayCaption(overlay: RunOverlay): string {
+  const captions: Record<string, string> = {
+    generated_graph: '展示算法生成的新网络，未与输入图合并。',
+    extracted_graph: '展示从文本抽取的新网络，未与输入图合并。',
+    predicted_edges: '候选关系以高对比虚线叠加在输入网络上。',
+    node_values: '节点大小表示本次算法返回的数值。',
+    hits: '节点大小表示枢纽分数；颜色与标签表示权威分数。',
+    removal_order: '节点大小与标签表示移除顺序，越早移除越醒目。',
+    opinions: '节点大小表示最终意见值。',
+    communities: '节点颜色表示社区归属。',
+    latest_communities: '节点颜色表示最后一个快照的社区归属。',
+    embedding_clusters: '节点颜色表示嵌入空间中的聚类归属。',
+  }
+  return captions[overlay.key] ?? '节点样式或关系来自本次后端计算结果。'
+}
+
 function overlayGraph(overlay: RunOverlay): GraphInputSpec {
   const base = props.result.validation.graph
   const usableNodes = overlay.nodes.filter((node) => typeof node.id === 'string')
   const usableEdges = overlay.edges.filter((edge) => typeof edge.source === 'string' && typeof edge.target === 'string')
+  if (replacementKeys.has(overlay.key)) {
+    return {
+      directed: replacementDirected(overlay),
+      nodes: usableNodes.map((node) => ({ id: String(node.id), label: String(node.label ?? node.id) })),
+      edges: usableEdges.map((edge) => ({ source: String(edge.source), target: String(edge.target), weight: Number.isFinite(Number(edge.weight)) ? Number(edge.weight) : 1 })),
+    }
+  }
   const nodes = new Map(base.nodes.map((node) => [node.id, node]))
   usableNodes.forEach((node) => nodes.set(String(node.id), { id: String(node.id), label: String(node.label ?? node.id) }))
   const edges = base.edges.map((edge) => ({ ...edge }))
@@ -61,7 +100,7 @@ const tableComparisons = computed(() => {
 
     <div v-if="result.tables.length" class="result-section"><h3>数据表</h3><div class="table-scroll" v-for="table in result.tables" :key="table.key"><table :aria-label="table.name"><caption>{{ table.name }}</caption><thead><tr><th v-for="column in table.columns" :key="column" scope="col">{{ column }}</th></tr></thead><tbody><tr v-for="(row, index) in table.rows" :key="index"><td v-for="column in table.columns" :key="column">{{ display(row[column]) }}</td></tr></tbody></table></div></div>
     <div v-if="result.charts.length" class="result-section"><h3>图表</h3><div class="chart-grid"><figure v-for="chart in result.charts" :key="chart.key"><ResultChart :chart="chart" /><figcaption>{{ chart.key }} · {{ chart.type }}</figcaption></figure></div></div>
-    <div v-if="result.overlays.length" class="result-section"><h3>网络叠加层</h3><div class="overlay-grid"><figure v-for="overlay in result.overlays" :key="overlay.key"><GraphCanvas :graph="overlayGraph(overlay)" :overlay="overlay" label="结果网络叠加图" /><figcaption>{{ overlay.key }} · 颜色、大小或新边来自本次真实结果</figcaption></figure></div></div>
+    <div v-if="result.overlays.length" class="result-section"><h3>网络叠加层</h3><div class="overlay-grid"><figure v-for="overlay in result.overlays" :key="overlay.key"><GraphCanvas :graph="overlayGraph(overlay)" :overlay="overlay" label="结果网络叠加图" /><figcaption>{{ overlayCaption(overlay) }}</figcaption></figure></div></div>
 
     <section v-if="comparable" class="compare-region" role="region" aria-label="实验结果对比">
       <h3>并排核对</h3><p>对比不是“找赢家”，而是检查结论对方法与参数是否稳定。</p>

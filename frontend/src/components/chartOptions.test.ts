@@ -19,6 +19,25 @@ describe('backend chart conversion', () => {
     expect(options.series[0].data).toEqual([['a', 'a', 0], ['b', 'a', 1], ['a', 'b', 1], ['b', 'b', 0]])
   })
 
+  test('keeps Floyd zero distance but renders null distance as unreachable', () => {
+    const options = chartOptions({
+      key: 'distance_heatmap', type: 'heatmap',
+      series: [{ name: 'distance', data: [
+        { source: 'a', target: 'a', distance: 0 },
+        { source: 'a', target: 'b', distance: 2 },
+        { source: 'a', target: 'c', distance: null },
+      ] }],
+    }, false) as Record<string, any>
+
+    expect(options.series[0].data).toEqual([
+      ['a', 'a', 0],
+      ['b', 'a', 2],
+      ['c', 'a', null],
+    ])
+    expect(options.tooltip.formatter({ value: ['c', 'a', null] })).toContain('不可达')
+    expect(options.tooltip.formatter({ value: ['a', 'a', 0] })).toContain('0')
+  })
+
   test('maps dynamic-community events to a categorical timeline scatterplot', () => {
     const options = chartOptions({
       key: 'community_timeline', type: 'timeline',

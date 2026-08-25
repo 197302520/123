@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, test } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 import { clearHistory, deleteHistory, listHistory, saveHistory } from './historyStore'
 import { historyRecord } from '../test/fixtures'
 
@@ -23,5 +23,14 @@ describe('anonymous IndexedDB history', () => {
 
     await clearHistory()
     expect(await listHistory()).toEqual([])
+  })
+
+  test('closes the IndexedDB connection when a write request fails', async () => {
+    const close = vi.spyOn(IDBDatabase.prototype, 'close')
+    const invalid = { ...historyRecord, parameters: { cannotClone: () => 'function' } } as never
+
+    await expect(saveHistory(invalid)).rejects.toBeDefined()
+
+    expect(close).toHaveBeenCalledTimes(1)
   })
 })

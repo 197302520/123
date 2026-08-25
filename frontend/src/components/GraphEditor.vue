@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import type { GraphInputSpec, GraphSpec } from '../api/contracts'
 import { validateGraph } from '../api/client'
 import { parseGraphText, serializeGraph, stripLearningLabel, validateGraphLocally } from '../lab/graphInput'
@@ -12,11 +12,17 @@ const error = ref('')
 const status = ref('')
 const preview = ref<GraphInputSpec>(props.modelValue)
 const validating = ref(false)
+let sourceRevision = 0
+let activeValidation: AbortController | null = null
 
 watch(() => props.modelValue, (graph) => { preview.value = graph; text.value = serializeGraph(graph, props.learningExample) }, { deep: true })
 
 async function validate() {
   if (props.disabled) return
+  activeValidation?.abort()
+  const controller = new AbortController()
+  const revision = ++sourceRevision
+  activeValidation = controller
   error.value = ''; status.value = ''; validating.value = true
   try {
     const parsed = parseGraphText(stripLearningLabel(text.value))
@@ -24,19 +30,27 @@ async function validate() {
     if (issues.length) throw new Error(issues.map((issue) => `${issue.path || '图数据'}：${issue.message}`).join('；'))
     preview.value = parsed
     emit('update:modelValue', parsed)
-    const response = await validateGraph(parsed)
+    const response = await validateGraph(parsed, controller.signal)
+    if (controller.signal.aborted || revision !== sourceRevision) return
     if (!response.graph) throw new Error('服务器未返回规范化图数据。')
     preview.value = response.graph
     emit('update:modelValue', response.graph)
     emit('validated', response.graph)
     status.value = `校验通过：${response.graph.nodes.length} 个节点，${response.graph.edges.length} 条边。`
   } catch (reason) {
+    if (controller.signal.aborted || revision !== sourceRevision || (reason instanceof DOMException && reason.name === 'AbortError')) return
     error.value = reason instanceof Error ? reason.message : '图数据校验失败。'
     emit('invalid', error.value)
-  } finally { validating.value = false }
+  } finally {
+    if (revision === sourceRevision) {
+      validating.value = false
+      if (activeValidation === controller) activeValidation = null
+    }
+  }
 }
 
 function editText(event: Event) {
+  activeValidation?.abort(); activeValidation = null; sourceRevision += 1; validating.value = false
   text.value = (event.target as HTMLTextAreaElement).value
   status.value = ''
   error.value = ''
@@ -47,10 +61,23 @@ async function importFile(event: Event) {
   if (props.disabled) return
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) return
+  activeValidation?.abort(); activeValidation = null
+  const revision = ++sourceRevision
+  validating.value = false; status.value = ''; error.value = ''
+  emit('invalid', '已选择新文件，请重新校验。')
   if (file.size > 5 * 1024 * 1024) { error.value = '文件超过 5 MB，请先精简后再导入。'; return }
-  text.value = await file.text()
-  await validate()
+  try {
+    const contents = await file.text()
+    if (revision !== sourceRevision) return
+    text.value = contents
+    await validate()
+  } catch {
+    if (revision !== sourceRevision) return
+    error.value = '无法读取文件，请确认文件仍可访问后重试。'
+    emit('invalid', error.value)
+  }
 }
+onBeforeUnmount(() => { sourceRevision += 1; activeValidation?.abort() })
 </script>
 
 <template>

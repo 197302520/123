@@ -9,13 +9,16 @@ const module = ref<CourseModuleDetail | null>(null)
 const cases = ref<CaseSummary[]>([])
 const error = ref('')
 const editorial = computed(() => moduleEditorial(props.slug))
+let loadRevision = 0
 async function load(slug: string) {
+  const revision = ++loadRevision
   module.value = null; cases.value = []; error.value = ''
   try {
     const [detail, allCases] = await Promise.all([fetchModule(slug), fetchCases()])
+    if (revision !== loadRevision) return
     module.value = detail
     cases.value = allCases.filter((item) => item.module === slug)
-  } catch (reason) { error.value = reason instanceof Error ? reason.message : '无法加载模块。' }
+  } catch (reason) { if (revision === loadRevision) error.value = reason instanceof Error ? reason.message : '无法加载模块。' }
 }
 watch(() => props.slug, load, { immediate: true })
 </script>

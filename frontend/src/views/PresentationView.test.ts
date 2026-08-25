@@ -52,4 +52,20 @@ describe('presentation keyboard controls', () => {
     expect(fetchCase).toHaveBeenLastCalledWith('dolphins')
     expect(screen.getByText(/追踪海豚之间的结伴关系/)).toBeVisible()
   })
+
+  test('keeps the newest presentation when an older route request finishes last', async () => {
+    let resolveOlder!: (value: any) => void
+    vi.mocked(fetchCase)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOlder = resolve }))
+      .mockResolvedValueOnce({ slug: 'dolphins', title: '海豚社交网络', summary: '新场景', module: 'communities', content: '新内容', dataset: null })
+    const view = render(PresentationView, { props: { slug: 'karate' }, global })
+
+    await view.rerender({ slug: 'dolphins' })
+    expect(await screen.findByText('海豚社交网络')).toBeVisible()
+    resolveOlder({ slug: 'karate', title: '过期空手道场景', summary: '旧场景', module: 'communities', content: '旧内容', dataset: null })
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(screen.getByText('海豚社交网络')).toBeVisible()
+    expect(screen.queryByText('过期空手道场景')).not.toBeInTheDocument()
+  })
 })
