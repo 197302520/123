@@ -20,6 +20,7 @@ include = ["config*", "learning*"]
 dev = [
     "pytest>=8.3,<9",
     "pytest-django>=4.9,<5",
+    "PyYAML>=6.0,<7",
 ]
 
 [tool.pytest.ini_options]

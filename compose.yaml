@@ -60,9 +60,11 @@ services:
 
   frontend:
     build: ./frontend
+    environment:
+      VITE_API_TARGET: http://web:8000
     ports: ["5173:5173"]
     depends_on:
-      web: { condition: service_started }
+      web: { condition: service_healthy }
 
 volumes:
   postgres_data:

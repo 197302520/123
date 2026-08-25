@@ -151,10 +151,13 @@ class RunListView(APIView):
             return Response({"detail": "请求体必须是 JSON 对象。"}, status=status.HTTP_400_BAD_REQUEST)
         algorithm = request.data.get("algorithm")
         graph, errors = graph_validation(request.data.get("graph"))
+        parameters = request.data.get("parameters", {})
         if algorithm != GRAPH_VALIDATE_SPEC["key"]:
             return Response({"detail": "暂不支持该算法。"}, status=status.HTTP_400_BAD_REQUEST)
         if errors:
             return Response({"valid": False, "errors": errors}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(parameters, dict):
+            return Response({"detail": "parameters 必须是 JSON 对象。"}, status=status.HTTP_400_BAD_REQUEST)
         seed = request.data.get("seed")
         if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
             return Response({"detail": "seed 必须是整数。"}, status=status.HTTP_400_BAD_REQUEST)
@@ -167,7 +170,7 @@ class RunListView(APIView):
         run = Run.objects.create(
             algorithm=algorithm,
             graph=graph,
-            parameters=request.data.get("parameters", {}),
+            parameters=parameters,
             seed=seed,
             status=Run.Status.COMPLETED,
             result=result,

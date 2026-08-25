@@ -211,3 +211,17 @@ def test_expired_anonymous_runs_are_not_available_before_cleanup(api_client):
     assert status_response.status_code == 404
     assert result_response.status_code == 404
     assert report_response.status_code == 404
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("parameters", [[], "not-an-object"])
+def test_run_rejects_non_object_parameters(api_client, parameters):
+    """Persisting an array or string would violate the RunRequest parameters contract."""
+    response = api_client.post("/api/runs/", {
+        "algorithm": "graph.validate",
+        "graph": {"directed": False, "nodes": [{"id": "a"}], "edges": []},
+        "parameters": parameters,
+    }, format="json")
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "parameters 必须是 JSON 对象。"}
