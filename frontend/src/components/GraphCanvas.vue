@@ -19,7 +19,7 @@ function elements(): ElementDefinition[] {
   const overlayNodes = new Map((props.overlay?.nodes ?? []).map((item) => [String(item.node ?? item.id), item]))
   const removalCount = Math.max(0, ...(props.overlay?.nodes ?? []).map((item) => finite(item.order)))
   const overlayEdges = new Set<string>()
-  ;(props.overlay?.edges ?? []).forEach((edge) => {
+  ;(props.overlay?.key === 'predicted_edges' ? props.overlay.edges : []).forEach((edge) => {
     if (typeof edge.source !== 'string' || typeof edge.target !== 'string') return
     overlayEdges.add(`${edge.source}\u0000${edge.target}`)
     if (!props.graph.directed) overlayEdges.add(`${edge.target}\u0000${edge.source}`)

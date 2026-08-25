@@ -28,5 +28,6 @@ describe('history comparison and destructive actions', () => {
 
     expect(screen.getByRole('alert', { name: '本机历史错误' })).toHaveTextContent('读取失败')
     expect(screen.queryByText('还没有实验记录。完成一次真实运行后，它会出现在这里。')).not.toBeInTheDocument()
+    expect(screen.queryByRole('list')).not.toBeInTheDocument()
   })
 })

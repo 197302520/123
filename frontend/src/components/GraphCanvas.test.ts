@@ -13,6 +13,22 @@ function latestElements() {
   return options.elements as Array<{ data: Record<string, unknown> }>
 }
 
+async function latestEdgeStyle(edgeId: string) {
+  const options = cytoscapeMock.mock.calls[cytoscapeMock.mock.calls.length - 1][0]
+  const { default: actualCytoscape } = await vi.importActual('cytoscape') as unknown as { default: typeof import('cytoscape') }
+  const instance = actualCytoscape({
+    headless: true,
+    styleEnabled: true,
+    elements: options.elements,
+    style: options.style,
+    layout: { name: 'preset' },
+  })
+  const edge = instance.getElementById(edgeId)
+  const style = { lineColor: edge.style('line-color'), lineStyle: edge.style('line-style') }
+  instance.destroy()
+  return style
+}
+
 describe('backend overlay visual encoding', () => {
   test.each([
     ['node_values', { node: 'a', value: 0.4 }, 0.4],
@@ -33,7 +49,17 @@ describe('backend overlay visual encoding', () => {
     expect(elements.find((item) => item.data.id === 'a')!.data.color).not.toBe(elements.find((item) => item.data.id === 'b')!.data.color)
   })
 
-  test('marks a backend predicted edge for the dashed result style', () => {
+  test.each(['generated_graph', 'extracted_graph'])('keeps %s replacement edges in the normal edge style', async (key) => {
+    render(GraphCanvas, { props: {
+      graph: { directed: false, nodes: exampleGraph.nodes, edges: [{ source: 'a', target: 'b', weight: 1 }] },
+      overlay: { key, nodes: exampleGraph.nodes.map((node) => ({ id: node.id, label: node.label })), edges: [{ source: 'a', target: 'b', weight: 1 }], node_styles: {} },
+    } })
+
+    expect(latestElements().find((item) => item.data.id === 'edge-0')!.data.predicted).toBe(0)
+    expect(await latestEdgeStyle('edge-0')).toEqual({ lineColor: 'rgb(120,144,135)', lineStyle: 'solid' })
+  })
+
+  test('marks a backend predicted edge with the red dashed result style', async () => {
     render(GraphCanvas, { props: {
       graph: { ...exampleGraph, edges: [...exampleGraph.edges, { source: 'a', target: 'c', weight: 0.8 }] },
       overlay: { key: 'predicted_edges', nodes: [], edges: [{ source: 'a', target: 'c', score: 0.8 }], node_styles: {} },
@@ -41,6 +67,7 @@ describe('backend overlay visual encoding', () => {
 
     const edges = latestElements().filter((item) => String(item.data.id).startsWith('edge-'))
     expect(edges.map((item) => item.data.predicted)).toEqual([0, 0, 1])
+    expect(await latestEdgeStyle('edge-2')).toEqual({ lineColor: 'rgb(179,74,50)', lineStyle: 'dashed' })
   })
 
   test('encodes both HITS hub and authority values in node size, color, and label', () => {

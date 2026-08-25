@@ -224,3 +224,42 @@ found 0 vulnerabilities
 ```
 
 The only build concern remains the non-fatal async `ResultsPanel` chunk warning, now 608.76 kB minified / 207.24 kB gzip. The previously documented browser QA gap is unchanged and no new visual-browser claim is made.
+
+## Final overlay-style and history-state corrective pass — 2026-08-26
+
+### Corrections
+
+- `GraphCanvas` now classifies overlay edges as predicted only when the backend overlay key is `predicted_edges`. Full replacement results (`generated_graph` and `extracted_graph`) retain their replacement graph and directedness semantics while using the normal solid network-edge style.
+- The executable component tests render the component configuration through real headless Cytoscape style resolution: generated/text-extraction edges resolve to the normal green-gray solid style, while link-prediction candidates retain the red dashed treatment.
+- History loading, empty, and populated-list branches are mutually exclusive. A load error with no records renders only the controlled alert (no empty copy and no empty `<ol>`), while a delete/clear error continues to show the records that remain safely stored.
+
+### Focused TDD evidence
+
+The new behavior tests were run against the committed implementation first:
+
+```text
+npm test -- src/components/GraphCanvas.test.ts src/components/HistoryPanel.test.ts --reporter=verbose
+Test Files 2 failed (2)
+Tests      3 failed | 10 passed (13)
+```
+
+Both replacement-overlay cases failed with `predicted: 1` instead of `0`; the history error-only case found an empty `<ol>`. After the minimal corrections, the same focused set passed `13/13`. The first full-suite pass then caught a conditional-chain regression that hid preserved records after a delete failure (`1 failed | 76 passed`); the existing LabView integration test drove the final branch correction, and the focused HistoryPanel + LabView set passed `12/12`.
+
+Fresh final verification after the last change:
+
+```text
+npm test -- --reporter=default
+Test Files 19 passed (19)
+Tests      77 passed (77)
+Duration   8.13s
+
+npm run build
+vue-tsc -b && vite build
+✓ 661 modules transformed
+✓ built in 5.10s
+
+python -m pytest backend/tests -q
+130 passed in 1.63s
+```
+
+The backend was unchanged; its full regression suite was nevertheless rerun because overlay shapes are a shared contract. The known non-fatal `ResultsPanel` chunk warning remains 608.76 kB minified / 207.24 kB gzip. The documented browser-QA tooling gap is unchanged.
