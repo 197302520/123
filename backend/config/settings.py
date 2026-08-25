@@ -71,3 +71,9 @@ REST_FRAMEWORK = {
 
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_BEAT_SCHEDULE = {
+    "cleanup-expired-anonymous-runs": {
+        "task": "learning.tasks.cleanup_expired_runs",
+        "schedule": 60.0,
+    },
+}

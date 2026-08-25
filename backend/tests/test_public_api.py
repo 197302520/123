@@ -1,10 +1,13 @@
 import pytest
+from datetime import timedelta
 from django.contrib import admin
 from django.contrib.auth import get_user_model
 from django.core.management import call_command
+from django.utils import timezone
 from rest_framework.test import APIClient
 
-from learning.models import Case, CourseModule, Dataset, PublishStatus
+from learning.models import Case, CourseModule, Dataset, PublishStatus, Run
+from learning.tasks import cleanup_expired_runs
 
 
 @pytest.fixture
@@ -141,7 +144,15 @@ def test_public_algorithm_and_run_routes_expose_stable_contracts(api_client):
     assert api_client.get(f"/api/runs/{run_id}/result/").json() == {
         "run_id": run_id, "status": "completed", "tables": [], "charts": [], "warnings": [],
         "provenance": {"algorithm": "graph.validate", "version": "1.0", "seed": 7},
+        "validation": {
+            "valid": True,
+            "errors": [],
+            "graph": {"directed": False, "nodes": [{"id": "a", "label": "a"}], "edges": []},
+        },
     }
+    run = Run.objects.get(pk=run_id)
+    assert run.result["validation"]["graph"]["nodes"] == [{"id": "a", "label": "a"}]
+    assert timezone.now() < run.expires_at <= timezone.now() + timedelta(hours=2, seconds=1)
     report = api_client.post("/api/reports/", {"run_id": run_id}, format="json")
     assert report.status_code == 201
     assert report.json()["run_id"] == run_id
@@ -155,3 +166,48 @@ def test_seed_command_creates_seven_modules_and_core_case_metadata():
 
     assert CourseModule.objects.filter(status=PublishStatus.PUBLISHED).count() == 7
     assert set(Case.objects.values_list("slug", flat=True)) >= {"zachary-karate", "dolphins"}
+
+
+@pytest.mark.django_db
+def test_expired_anonymous_runs_are_removed_by_cleanup_task():
+    """Removing expiry cleanup would retain anonymous graph data indefinitely."""
+    expired = Run.objects.create(
+        algorithm="graph.validate", graph={}, expires_at=timezone.now() - timedelta(seconds=1)
+    )
+    retained = Run.objects.create(
+        algorithm="graph.validate", graph={}, expires_at=timezone.now() + timedelta(hours=1)
+    )
+
+    removed = cleanup_expired_runs()
+
+    assert removed == 1
+    assert not Run.objects.filter(pk=expired.pk).exists()
+    assert Run.objects.filter(pk=retained.pk).exists()
+
+
+@pytest.mark.django_db
+def test_run_and_report_reject_json_arrays_with_structured_errors(api_client):
+    """Calling dict methods on an array request body would turn a client error into a 500."""
+    run_response = api_client.post("/api/runs/", [], format="json")
+    report_response = api_client.post("/api/reports/", [], format="json")
+
+    assert run_response.status_code == 400
+    assert report_response.status_code == 400
+    assert run_response.json() == {"detail": "请求体必须是 JSON 对象。"}
+    assert report_response.json() == {"detail": "请求体必须是 JSON 对象。"}
+
+
+@pytest.mark.django_db
+def test_expired_anonymous_runs_are_not_available_before_cleanup(api_client):
+    """A direct primary-key lookup would expose graph data past its two-hour retention window."""
+    expired = Run.objects.create(
+        algorithm="graph.validate", graph={}, expires_at=timezone.now() - timedelta(seconds=1)
+    )
+
+    status_response = api_client.get(f"/api/runs/{expired.id}/")
+    result_response = api_client.get(f"/api/runs/{expired.id}/result/")
+    report_response = api_client.post("/api/reports/", {"run_id": str(expired.id)}, format="json")
+
+    assert status_response.status_code == 404
+    assert result_response.status_code == 404
+    assert report_response.status_code == 404

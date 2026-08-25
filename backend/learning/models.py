@@ -2,8 +2,15 @@
 from __future__ import annotations
 
 import uuid
+from datetime import timedelta
 
 from django.db import models
+from django.utils import timezone
+
+
+def run_expiry_default():
+    """Anonymous laboratory inputs are retained for no more than two hours."""
+    return timezone.now() + timedelta(hours=2)
 
 
 class PublishStatus(models.TextChoices):
@@ -64,3 +71,4 @@ class Run(models.Model):
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     result = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(default=run_expiry_default, db_index=True)

@@ -5,6 +5,7 @@ from typing import Any
 
 from django.http import Http404
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 from rest_framework.request import Request
@@ -26,6 +27,11 @@ def public_cases():
     ).filter(
         Q(dataset__isnull=True) | Q(dataset__status=PublishStatus.PUBLISHED)
     )
+
+
+def active_runs():
+    """Expired anonymous inputs are never visible while queued cleanup catches up."""
+    return Run.objects.filter(expires_at__gt=timezone.now())
 
 
 def module_payload(module: CourseModule, *, detail: bool) -> dict[str, Any]:
@@ -141,6 +147,8 @@ class RunListView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request: Request) -> Response:
+        if not isinstance(request.data, dict):
+            return Response({"detail": "请求体必须是 JSON 对象。"}, status=status.HTTP_400_BAD_REQUEST)
         algorithm = request.data.get("algorithm")
         graph, errors = graph_validation(request.data.get("graph"))
         if algorithm != GRAPH_VALIDATE_SPEC["key"]:
@@ -150,12 +158,19 @@ class RunListView(APIView):
         seed = request.data.get("seed")
         if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
             return Response({"detail": "seed 必须是整数。"}, status=status.HTTP_400_BAD_REQUEST)
+        result = {
+            "tables": [],
+            "charts": [],
+            "warnings": [],
+            "validation": {"valid": True, "errors": [], "graph": graph},
+        }
         run = Run.objects.create(
             algorithm=algorithm,
             graph=graph,
             parameters=request.data.get("parameters", {}),
             seed=seed,
             status=Run.Status.COMPLETED,
+            result=result,
         )
         return Response({"id": str(run.id), "status": run.status, "algorithm": run.algorithm, "seed": run.seed}, status=status.HTTP_201_CREATED)
 
@@ -163,7 +178,7 @@ class RunListView(APIView):
 class RunStatusView(APIView):
     def get(self, request: Request, run_id: str) -> Response:
         try:
-            run = Run.objects.get(pk=run_id)
+            run = active_runs().get(pk=run_id)
         except (Run.DoesNotExist, ValueError) as exc:
             raise Http404 from exc
         return Response({"id": str(run.id), "status": run.status, "algorithm": run.algorithm, "seed": run.seed})
@@ -172,16 +187,17 @@ class RunStatusView(APIView):
 class RunResultView(APIView):
     def get(self, request: Request, run_id: str) -> Response:
         try:
-            run = Run.objects.get(pk=run_id)
+            run = active_runs().get(pk=run_id)
         except (Run.DoesNotExist, ValueError) as exc:
             raise Http404 from exc
         result: RunResult = {
             "run_id": str(run.id),
             "status": run.status,
-            "tables": [],
-            "charts": [],
-            "warnings": [],
+            "tables": run.result.get("tables", []),
+            "charts": run.result.get("charts", []),
+            "warnings": run.result.get("warnings", []),
             "provenance": {"algorithm": run.algorithm, "version": "1.0", "seed": run.seed},
+            "validation": run.result.get("validation", {"valid": False, "errors": [], "graph": run.graph}),
         }
         return Response(result)
 
@@ -190,8 +206,10 @@ class ReportView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request: Request) -> Response:
+        if not isinstance(request.data, dict):
+            return Response({"detail": "请求体必须是 JSON 对象。"}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            run = Run.objects.get(pk=request.data.get("run_id"))
+            run = active_runs().get(pk=request.data.get("run_id"))
         except (Run.DoesNotExist, ValueError, TypeError) as exc:
             raise Http404 from exc
         return Response({

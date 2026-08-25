@@ -23,8 +23,13 @@ services:
 
   web:
     build: ./backend
-    env_file: .env.example
     environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-development-only-secret-key}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      POSTGRES_DB: ${POSTGRES_DB:-social_network}
+      POSTGRES_USER: ${POSTGRES_USER:-social_network}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
     ports: ["8000:8000"]
@@ -39,9 +44,14 @@ services:
 
   worker:
     build: ./backend
-    command: celery -A config worker --loglevel=info
-    env_file: .env.example
+    command: celery -A config worker --beat --loglevel=info
     environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-development-only-secret-key}
+      DJANGO_DEBUG: ${DJANGO_DEBUG:-1}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      POSTGRES_DB: ${POSTGRES_DB:-social_network}
+      POSTGRES_USER: ${POSTGRES_USER:-social_network}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
       POSTGRES_HOST: postgres
       REDIS_URL: redis://redis:6379/0
     depends_on:

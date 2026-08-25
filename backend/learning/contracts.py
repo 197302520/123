@@ -4,6 +4,23 @@ from __future__ import annotations
 from typing import NotRequired, TypedDict
 
 
+class GraphInputNode(TypedDict):
+    id: str
+    label: NotRequired[str]
+
+
+class GraphInputEdge(TypedDict):
+    source: str
+    target: str
+    weight: NotRequired[float]
+
+
+class GraphInputSpec(TypedDict):
+    directed: bool
+    nodes: list[GraphInputNode]
+    edges: list[GraphInputEdge]
+
+
 class GraphNode(TypedDict):
     id: str
     label: str
@@ -32,7 +49,7 @@ class AlgorithmSpec(TypedDict):
 
 class RunRequest(TypedDict):
     algorithm: str
-    graph: GraphSpec
+    graph: GraphInputSpec
     parameters: dict[str, object]
     seed: NotRequired[int | None]
 
@@ -44,6 +61,7 @@ class RunResult(TypedDict):
     charts: list[object]
     warnings: list[str]
     provenance: dict[str, object]
+    validation: dict[str, object]
 
 
 GRAPH_VALIDATE_SPEC: AlgorithmSpec = {
