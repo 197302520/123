@@ -14,6 +14,7 @@ from django.conf import settings
 
 from .algorithms.errors import AlgorithmInputError
 from .algorithms.graph import nx_to_graph, normalize_graph
+from .algorithms.exports import GRAPHML_ATTRIBUTES_KEY, GRAPHML_SCHEMA_MARKER
 
 
 ALLOWED_SUFFIXES = {".txt", ".csv", ".xlsx", ".json", ".graphml", ".gexf"}
@@ -190,21 +191,28 @@ def _parse_xml_graph(data: bytes, suffix: str) -> dict[str, Any]:
             network = nx.read_graphml(io.BytesIO(data))
             if network.is_multigraph():
                 raise UnsafeUploadError("暂不支持多重边图。")
-            for _, node_data in network.nodes(data=True):
-                encoded_attributes = node_data.pop("attributes", None)
-                if encoded_attributes is None:
-                    continue
-                if not isinstance(encoded_attributes, str):
-                    raise UnsafeUploadError("GraphML 节点 attributes 必须是 JSON 对象文本。")
-                try:
-                    decoded_attributes = json.loads(encoded_attributes)
-                except json.JSONDecodeError as exc:
-                    raise UnsafeUploadError("GraphML 节点 attributes 不是有效 JSON。") from exc
-                if not isinstance(decoded_attributes, dict):
-                    raise UnsafeUploadError("GraphML 节点 attributes 必须解码为对象。")
-                for name, value in decoded_attributes.items():
-                    node_data.setdefault(name, value)
-            return normalize_graph(nx_to_graph(network))
+            decoded_by_node: dict[str, dict[str, Any]] = {}
+            if network.graph.get("sna_schema") == GRAPHML_SCHEMA_MARKER:
+                for node_id, node_data in network.nodes(data=True):
+                    encoded_attributes = node_data.pop(GRAPHML_ATTRIBUTES_KEY, None)
+                    if encoded_attributes is None:
+                        continue
+                    if not isinstance(encoded_attributes, str):
+                        raise UnsafeUploadError("平台 GraphML 节点属性信封必须是 JSON 对象文本。")
+                    try:
+                        decoded_attributes = json.loads(encoded_attributes)
+                    except json.JSONDecodeError as exc:
+                        raise UnsafeUploadError("平台 GraphML 节点属性信封不是有效 JSON。") from exc
+                    if not isinstance(decoded_attributes, dict):
+                        raise UnsafeUploadError("平台 GraphML 节点属性信封必须解码为对象。")
+                    decoded_by_node[str(node_id)] = decoded_attributes
+            converted = nx_to_graph(network)
+            for node in converted["nodes"]:
+                if node["id"] in decoded_by_node:
+                    node["attributes"] = {
+                        **node.get("attributes", {}), **decoded_by_node[node["id"]],
+                    }
+            return normalize_graph(converted)
         root = ET.fromstring(data)
         local = lambda element: element.tag.rsplit("}", 1)[-1]
         graph_element = next((element for element in root.iter() if local(element) == "graph"), None)

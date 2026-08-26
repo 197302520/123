@@ -11,6 +11,8 @@ from .graph import normalize_graph
 
 
 FORMATS = {"json", "csv", "graphml", "gexf", "gml", "pajek", "edgelist", "adjacency"}
+GRAPHML_SCHEMA_MARKER = "sna_graphspec_v1"
+GRAPHML_ATTRIBUTES_KEY = "sna_attributes_json"
 
 
 def _sorted_graph(graph: dict[str, Any]) -> dict[str, Any]:
@@ -48,14 +50,16 @@ def _graphml(graph: dict[str, Any]) -> str:
     ET.register_namespace("", namespace)
     root = ET.Element(f"{{{namespace}}}graphml")
     ET.SubElement(root, f"{{{namespace}}}key", {"id": "label", "for": "node", "attr.name": "label", "attr.type": "string"})
-    ET.SubElement(root, f"{{{namespace}}}key", {"id": "attributes", "for": "node", "attr.name": "attributes", "attr.type": "string"})
+    ET.SubElement(root, f"{{{namespace}}}key", {"id": GRAPHML_ATTRIBUTES_KEY, "for": "node", "attr.name": GRAPHML_ATTRIBUTES_KEY, "attr.type": "string"})
+    ET.SubElement(root, f"{{{namespace}}}key", {"id": "sna_schema", "for": "graph", "attr.name": "sna_schema", "attr.type": "string"})
     ET.SubElement(root, f"{{{namespace}}}key", {"id": "weight", "for": "edge", "attr.name": "weight", "attr.type": "double"})
     graph_element = ET.SubElement(root, f"{{{namespace}}}graph", {"id": "G", "edgedefault": "directed" if graph["directed"] else "undirected"})
+    ET.SubElement(graph_element, f"{{{namespace}}}data", {"key": "sna_schema"}).text = GRAPHML_SCHEMA_MARKER
     for node in graph["nodes"]:
         element = ET.SubElement(graph_element, f"{{{namespace}}}node", {"id": node["id"]})
         ET.SubElement(element, f"{{{namespace}}}data", {"key": "label"}).text = node["label"]
         if node.get("attributes"):
-            ET.SubElement(element, f"{{{namespace}}}data", {"key": "attributes"}).text = json.dumps(
+            ET.SubElement(element, f"{{{namespace}}}data", {"key": GRAPHML_ATTRIBUTES_KEY}).text = json.dumps(
                 node["attributes"], ensure_ascii=False, sort_keys=True,
             )
     for index, edge in enumerate(graph["edges"]):

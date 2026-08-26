@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { executeRun } from './runMachine'
+import { executeRun, resumeRun } from './runMachine'
 import { completedResult, exampleGraph } from '../test/fixtures'
 
 const request = { algorithm: 'centrality.degree', graph: exampleGraph, parameters: {}, seed: 7 }
@@ -78,5 +78,41 @@ describe('laboratory run state machine', () => {
     expect(fetchRunStatus).not.toHaveBeenCalled()
     expect(states).toEqual(['submitting', 'polling'])
     vi.useRealTimers()
+  })
+
+  test('reports a still-active run instead of turning polling exhaustion into a terminal error', async () => {
+    const states: string[] = []
+    const fetchRunStatus = vi.fn().mockResolvedValue({
+      id: 'run-background', status: 'running', algorithm: 'centrality.degree', seed: 7,
+    })
+
+    await expect(executeRun(request, {
+      submitRun: vi.fn().mockResolvedValue({
+        id: 'run-background', status: 'pending', algorithm: 'centrality.degree', seed: 7,
+      }),
+      fetchRunStatus,
+      fetchRunResult: vi.fn(),
+    }, (state) => states.push(state), { intervalMs: 0, maxPolls: 2 })).rejects.toMatchObject({
+      name: 'RunStillActiveError', runId: 'run-background', status: 'running',
+    })
+
+    expect(states).toEqual(['submitting', 'polling', 'background'])
+    expect(fetchRunStatus).toHaveBeenCalledTimes(2)
+  })
+
+  test('resumes one retained run id through running to completion without resubmitting', async () => {
+    const states: string[] = []
+    const fetchRunStatus = vi.fn()
+      .mockResolvedValueOnce({ id: 'run-background', status: 'running', algorithm: 'centrality.degree', seed: 7 })
+      .mockResolvedValueOnce({ id: 'run-background', status: 'completed', algorithm: 'centrality.degree', seed: 7 })
+    const fetchRunResult = vi.fn().mockResolvedValue({ ...completedResult, run_id: 'run-background' })
+
+    const result = await resumeRun('run-background', {
+      submitRun: vi.fn(), fetchRunStatus, fetchRunResult,
+    }, (state) => { states.push(state) }, { intervalMs: 0 })
+
+    expect(states).toEqual(['polling', 'completed'])
+    expect(result.run_id).toBe('run-background')
+    expect(fetchRunResult).toHaveBeenCalledWith('run-background', undefined)
   })
 })

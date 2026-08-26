@@ -2,11 +2,12 @@ from django.urls import path
 
 from .views import (
     AlgorithmListView, CaseDetailView, CaseListView, GraphImportView, GraphValidationView, ModuleDetailView,
-    ModuleListView, ReportBundleView, ReportView, RunCancelView, RunListView, RunResultView, RunStatusView,
+    ModuleListView, ReportBundleView, ReportView, RunCancelView, RunListView, RunResultView, RunStatusView, health,
 )
 from .teacher_views import TeacherCaseDetailView, TeacherCaseListView, TeacherSessionView
 
 urlpatterns = [
+    path("health/", health),
     path("modules/", ModuleListView.as_view()),
     path("modules/<slug:slug>/", ModuleDetailView.as_view()),
     path("cases/", CaseListView.as_view()),

@@ -10,7 +10,7 @@ import RunStatus from '../components/RunStatus.vue'
 import { LEARNING_EXAMPLE_GRAPH } from '../lab/exampleGraph'
 import { clearHistory, deleteHistory, listHistory, saveHistory } from '../lab/historyStore'
 import { defaultsFor } from '../lab/parameters'
-import { executeRun, type RunPhase } from '../lab/runMachine'
+import { executeRun, resumeRun, type RunPhase } from '../lab/runMachine'
 
 const ResultsPanel = defineAsyncComponent({
   loader: () => import('../components/ResultsPanel.vue'),
@@ -45,14 +45,15 @@ const cancellationMessage = ref('')
 const cancellationError = ref('')
 const cancellationInFlight = ref(false)
 let activeRunController: AbortController | null = null
-let activeRunId: string | null = null
+const activeRunId = ref<string | null>(null)
+const activeRunContext = ref<{ algorithm: AlgorithmSpec; request: RunRequest } | null>(null)
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
 const selectedAlgorithm = computed(() => algorithms.value.find((item) => item.key === selectedKey.value) ?? null)
 const graphType = computed(() => graph.value.directed ? 'directed' : 'undirected')
 const incompatible = computed(() => selectedAlgorithm.value ? !selectedAlgorithm.value.supported_graph_types.includes(graphType.value) : false)
 const running = computed(() => phase.value === 'submitting' || phase.value === 'polling')
-const canRun = computed(() => Boolean(selectedAlgorithm.value && graphReady.value && parametersValid.value && !incompatible.value && !running.value))
+const canRun = computed(() => Boolean(selectedAlgorithm.value && graphReady.value && parametersValid.value && !incompatible.value && !running.value && !activeRunId.value))
 
 watch(selectedAlgorithm, (algorithm) => { parametersValid.value = true; if (algorithm) parameters.value = defaultsFor(algorithm) })
 
@@ -92,8 +93,31 @@ onMounted(async () => {
 })
 onBeforeUnmount(() => cancelActiveRun())
 
-function onValidated(value: GraphSpec) { graph.value = value; graphReady.value = true; phase.value = 'idle'; runError.value = '' }
-function onInvalid() { graphReady.value = false; phase.value = 'idle' }
+function onValidated(value: GraphSpec) { graph.value = value; graphReady.value = true; if (!activeRunId.value) phase.value = 'idle'; runError.value = '' }
+function onInvalid() { graphReady.value = false; if (!activeRunId.value) phase.value = 'idle' }
+
+async function publishCompleted(completed: RunResult, context: { algorithm: AlgorithmSpec; request: RunRequest }) {
+  result.value = completed
+  const record: HistoryRecord = {
+    id: completed.run_id,
+    createdAt: new Date().toISOString(),
+    algorithm: context.algorithm.key,
+    algorithmName: context.algorithm.name,
+    parameters: context.request.parameters,
+    seed: context.request.seed ?? null,
+    graph: context.request.graph as GraphSpec,
+    result: completed,
+  }
+  currentRecord.value = record
+  try {
+    await saveHistory(record)
+    records.value = [record, ...records.value.filter((item) => item.id !== record.id)]
+  } catch (reason) { historyError.value = reason instanceof Error ? reason.message : '结果已完成，但无法写入本机历史。' }
+}
+
+function isStillActive(reason: unknown): reason is Error & { runId: string } {
+  return reason instanceof Error && reason.name === 'RunStillActiveError'
+}
 
 async function run() {
   if (!selectedAlgorithm.value || !canRun.value) return
@@ -102,43 +126,61 @@ async function run() {
   activeRunController = controller
   const algorithm = clone(selectedAlgorithm.value)
   const request: RunRequest = clone({ algorithm: algorithm.key, graph: graph.value, parameters: parameters.value, seed: seed.value })
+  activeRunContext.value = { algorithm, request }
   runError.value = ''; historyError.value = ''; result.value = null; currentRecord.value = null; compareRecord.value = null
   try {
     const completed = await executeRun(request, { submitRun, fetchRunStatus, fetchRunResult }, (next) => {
       if (activeRunController === controller && !controller.signal.aborted) phase.value = next
     }, {
       signal: controller.signal,
-      onSubmitted: (submission) => { if (activeRunController === controller) activeRunId = submission.id },
+      onSubmitted: (submission) => { if (activeRunController === controller) activeRunId.value = submission.id },
     })
     if (controller.signal.aborted || activeRunController !== controller) return
-    result.value = completed
-    const record: HistoryRecord = {
-      id: completed.run_id,
-      createdAt: new Date().toISOString(),
-      algorithm: algorithm.key,
-      algorithmName: algorithm.name,
-      parameters: request.parameters,
-      seed: request.seed ?? null,
-      graph: request.graph as GraphSpec,
-      result: completed,
-    }
-    currentRecord.value = record
-    try {
-      await saveHistory(record)
-      records.value = [record, ...records.value.filter((item) => item.id !== record.id)]
-    } catch (reason) { historyError.value = reason instanceof Error ? reason.message : '结果已完成，但无法写入本机历史。' }
+    await publishCompleted(completed, { algorithm, request })
+    activeRunId.value = null
+    activeRunContext.value = null
   } catch (reason) {
     if (reason instanceof DOMException && reason.name === 'AbortError') return
-    if (activeRunController === controller) runError.value = reason instanceof Error ? reason.message : '运行失败，请检查输入后重试。'
+    if (activeRunController === controller && !isStillActive(reason)) {
+      runError.value = reason instanceof Error ? reason.message : '运行失败，请检查输入后重试。'
+      activeRunId.value = null
+      activeRunContext.value = null
+    }
   } finally {
     if (activeRunController === controller) {
       activeRunController = null
-      activeRunId = null
     }
   }
 }
 
-async function requestCancellation(runId: string) {
+async function resumeActiveRun() {
+  const runId = activeRunId.value
+  const context = activeRunContext.value
+  if (!runId || !context || running.value) return
+  const controller = new AbortController()
+  activeRunController = controller
+  runError.value = ''
+  try {
+    const completed = await resumeRun(runId, { submitRun, fetchRunStatus, fetchRunResult }, (next) => {
+      if (activeRunController === controller && !controller.signal.aborted) phase.value = next
+    }, { signal: controller.signal })
+    if (controller.signal.aborted || activeRunController !== controller) return
+    await publishCompleted(completed, context)
+    activeRunId.value = null
+    activeRunContext.value = null
+  } catch (reason) {
+    if (reason instanceof DOMException && reason.name === 'AbortError') return
+    if (activeRunController === controller && !isStillActive(reason)) {
+      runError.value = reason instanceof Error ? reason.message : '查询任务状态失败，请稍后重试。'
+      activeRunId.value = null
+      activeRunContext.value = null
+    }
+  } finally {
+    if (activeRunController === controller) activeRunController = null
+  }
+}
+
+async function requestCancellation(runId: string): Promise<boolean> {
   cancellationRunId.value = runId
   cancellationMessage.value = ''
   cancellationError.value = ''
@@ -146,20 +188,32 @@ async function requestCancellation(runId: string) {
   try {
     await cancelRun(runId)
     cancellationMessage.value = `已取消任务 ${runId}`
+    if (activeRunId.value === runId) {
+      activeRunId.value = null
+      activeRunContext.value = null
+      phase.value = 'idle'
+    }
+    return true
   } catch (reason) {
     const detail = reason instanceof Error ? reason.message : '取消请求发送失败'
     cancellationError.value = `任务 ${runId}：${detail}`
+    return false
   } finally {
     cancellationInFlight.value = false
   }
 }
 
 function cancelActiveRun() {
-  const runId = activeRunId
-  activeRunId = null
+  const runId = activeRunId.value
+  activeRunId.value = null
+  activeRunContext.value = null
   activeRunController?.abort()
   activeRunController = null
   if (runId) void requestCancellation(runId)
+}
+
+function cancelBackgroundRun() {
+  if (activeRunId.value && !cancellationInFlight.value) void requestCancellation(activeRunId.value)
 }
 
 function retryCancellation() {
@@ -233,7 +287,7 @@ const categoryName = (key: string) => ({ graph: '图结构', model: '随机模�
 
         <section class="run-console" aria-labelledby="run-heading">
           <div><p class="eyebrow">RUN & TRACE</p><h2 id="run-heading">三、运行并留下证据链</h2><label>随机种子<input v-model.number="seed" :disabled="running" type="number" step="1" /></label></div>
-          <div><RunStatus :phase="phase" :message="runError" /><button type="button" class="button primary run-button" :disabled="!canRun" @click="run">{{ running ? '正在提交…' : '运行真实算法' }}</button><p v-if="!graphReady" class="field-help">先在第一步通过图数据校验。</p></div>
+          <div><RunStatus :phase="phase" :message="runError" /><button type="button" class="button primary run-button" :disabled="!canRun" @click="run">{{ running ? '正在提交…' : '运行真实算法' }}</button><div v-if="phase === 'background' && activeRunId" class="editor-actions"><button type="button" class="button secondary" @click="resumeActiveRun">继续查询状态</button><button type="button" class="button secondary" :disabled="cancellationInFlight" @click="cancelBackgroundRun">{{ cancellationInFlight ? '正在取消…' : '取消后台任务' }}</button></div><p v-if="!graphReady" class="field-help">先在第一步通过图数据校验。</p></div>
         </section>
         <p v-if="runError" class="validation-error" role="alert">{{ runError }}</p>
         <p v-if="cancellationMessage" class="state-message compact" role="status" aria-label="取消状态">{{ cancellationMessage }}</p>

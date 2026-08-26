@@ -120,7 +120,10 @@ def test_graphml_export_import_roundtrip_preserves_citation_features_for_attribu
     graph = {
         "directed": True,
         "nodes": [
-            {"id": "p0", "attributes": {"features": [1, 0], "topic": "networks"}},
+            {
+                "id": "p0", "label": "Display title",
+                "attributes": {"features": [1, 0], "topic": "networks", "label": "semantic topic"},
+            },
             {"id": "p1", "attributes": {"features": [0, 1], "topic": "learning"}},
             {"id": "p2", "attributes": {"features": [1, 1], "topic": "hybrid"}},
             {"id": "p3", "attributes": {"features": [0, 0], "topic": "baseline"}},
@@ -135,12 +138,32 @@ def test_graphml_export_import_roundtrip_preserves_citation_features_for_attribu
         "citations.graphml", graphml, content_type="application/graphml+xml",
     ))
 
+    assert imported["nodes"][0]["label"] == "Display title"
     assert [node["attributes"] for node in imported["nodes"]] == [node["attributes"] for node in graph["nodes"]]
+    assert b"sna_attributes_json" in graphml and b"sna_graphspec_v1" in graphml
     result = execute_algorithm(
         "embedding.ae", imported,
         {"clusters": 2, "embedding_dim": 2, "epochs": 2, "learning_rate": 0.01}, seed=7,
     )
     assert result["provenance"]["node_attribute_dimensions"] == 2
+
+
+def test_third_party_graphml_scalar_named_attributes_is_not_treated_as_platform_json():
+    """Only the positively marked platform envelope may be decoded as attribute JSON."""
+    graphml = b'''<?xml version="1.0" encoding="UTF-8"?>
+<graphml xmlns="http://graphml.graphdrawing.org/xmlns">
+  <key id="a" for="node" attr.name="attributes" attr.type="string"/>
+  <graph edgedefault="undirected">
+    <node id="n0"><data key="a">plain scalar</data></node>
+    <node id="n1"/><edge source="n0" target="n1"/>
+  </graph>
+</graphml>'''
+
+    imported = parse_uploaded_graph(SimpleUploadedFile(
+        "third-party.graphml", graphml, content_type="application/graphml+xml",
+    ))
+
+    assert imported["nodes"][0]["attributes"] == {"attributes": "plain scalar"}
 
 
 @pytest.mark.django_db

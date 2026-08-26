@@ -1,6 +1,7 @@
 from unittest.mock import patch
 from datetime import timedelta
 import time
+import json
 
 import pytest
 from celery import current_app
@@ -9,6 +10,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from learning import tasks
+from learning import job_runner
 from learning.models import Run
 
 
@@ -122,8 +124,8 @@ def test_cache_canonicalizes_endpoint_order_for_undirected_edges(api_client):
 
 @pytest.mark.django_db
 @override_settings(CELERY_TASK_ALWAYS_EAGER=False)
-def test_queue_delivery_failure_records_failed_state_without_leaking_broker_details(api_client, caplog):
-    """A broker outage must not strand a run in pending or expose connection details."""
+def test_queue_delivery_failure_stays_pending_for_reconciliation_without_leaking_broker_details(api_client, caplog):
+    """A broker outage must schedule reconciliation, not fabricate a failed algorithm result."""
     payload = {"algorithm": "centrality.pagerank", "graph": PATH3, "parameters": {}, "seed": 7}
     with caplog.at_level("ERROR"):
         with (
@@ -133,10 +135,12 @@ def test_queue_delivery_failure_records_failed_state_without_leaking_broker_deta
             response = api_client.post("/api/runs/", payload, format="json")
 
     run = Run.objects.latest("created_at")
-    assert response.status_code == 503
-    assert run.status == Run.Status.FAILED
+    assert response.status_code == 201
+    assert response.json()["id"] == str(run.id)
+    assert response.json()["status"] == Run.Status.PENDING
+    assert run.status == Run.Status.PENDING
     assert run.result == {}
-    assert run.error == {"code": "queue_unavailable", "message": "任务队列暂时不可用，请稍后重试。", "path": ""}
+    assert run.error == {}
     assert "secret" not in response.content.decode()
     assert str(run.id) in caplog.text and "centrality.pagerank" in caplog.text
     assert "secret" not in caplog.text
@@ -189,7 +193,7 @@ def test_running_cancellation_wins_the_worker_result_race(api_client, monkeypatc
     run.refresh_from_db()
     assert state == Run.Status.CANCELLED
     assert run.status == Run.Status.CANCELLED and run.result == {}
-    revoke.assert_called_once_with(run.task_id, terminate=True, signal="SIGTERM")
+    revoke.assert_not_called()
 
 
 @pytest.mark.django_db
@@ -276,15 +280,15 @@ def test_unexpected_worker_error_logs_sanitized_trace_with_run_identifiers(caplo
     assert "GRAPH-CONTENT-SECRET" not in caplog.text
     record = next(record for record in caplog.records if record.name == "learning.tasks")
     assert record.exc_info is not None
-    assert record.exc_info[2].tb_frame.f_code.co_name == "execute_run_job"
+    assert record.exc_info[2].tb_frame.f_code.co_name == "_execute_in_process"
 
 
 @pytest.mark.django_db
-def test_failed_running_revoke_is_visible_and_retryable_without_reviving_the_run(api_client):
-    """A broker revoke failure cannot be silently reported as a successful stop."""
+def test_failed_pending_revoke_is_visible_and_retryable_without_reviving_the_run(api_client):
+    """Only a queued delivery needs broker revoke; its failure remains retryable."""
     run = Run.objects.create(
         algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
-        status=Run.Status.RUNNING, started_at=timezone.now(), task_id="running-revoke-task",
+        status=Run.Status.PENDING, task_id="pending-revoke-task",
     )
     assert hasattr(run, "cancel_revoke_pending"), "Run must persist a cancellation-delivery flag"
     with patch.object(current_app.control, "revoke", side_effect=RuntimeError("redis://secret@broker")):
@@ -301,7 +305,7 @@ def test_failed_running_revoke_is_visible_and_retryable_without_reviving_the_run
     run.refresh_from_db()
     assert retried.status_code == 200 and retried.json()["status"] == Run.Status.CANCELLED
     assert run.cancel_revoke_pending is False
-    revoke.assert_called_once_with(run.task_id, terminate=True, signal="SIGTERM")
+    revoke.assert_called_once_with(run.task_id, terminate=False)
 
 
 @pytest.mark.django_db(transaction=True)
@@ -370,7 +374,225 @@ def test_cleanup_requeues_one_stale_pending_delivery_and_duplicate_delivery_is_c
     assert run.status == Run.Status.PENDING and run.requeue_count == 1
     enqueue.assert_called_once_with(args=[str(run.id)], task_id=run.task_id, queue="default")
 
-    with patch.object(tasks, "execute_algorithm", return_value={"tables": [{"key": "once"}]}) as algorithm:
-        assert tasks.execute_run_job(str(run.id)) == Run.Status.COMPLETED
-        assert tasks.execute_run_job(str(run.id)) == Run.Status.COMPLETED
+    with override_settings(CELERY_TASK_ALWAYS_EAGER=True):
+        with patch.object(tasks, "execute_algorithm", return_value={"tables": [{"key": "once"}]}) as algorithm:
+            assert tasks.execute_run_job(str(run.id)) == Run.Status.COMPLETED
+            assert tasks.execute_run_job(str(run.id)) == Run.Status.COMPLETED
     algorithm.assert_called_once()
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, PENDING_DELIVERY_SECONDS=30, MAX_PENDING_REQUEUES=3)
+def test_healthy_pending_backlog_is_never_age_forced_to_failed_after_many_intervals():
+    """A healthy queue can wait over eight minutes without becoming a false terminal failure."""
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="healthy-backlog-task", requeue_count=99,
+    )
+    Run.objects.filter(pk=run.id).update(queued_at=timezone.now() - timedelta(minutes=9))
+
+    with patch.object(tasks.execute_run_job, "apply_async") as enqueue:
+        tasks.cleanup_expired_runs()
+
+    run.refresh_from_db()
+    assert run.status == Run.Status.PENDING
+    assert run.finished_at is None and run.error == {}
+    assert run.requeue_count == 100
+    enqueue.assert_called_once_with(args=[str(run.id)], task_id=run.task_id, queue="default")
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, PENDING_DELIVERY_SECONDS=30)
+def test_lost_pending_delivery_retries_after_broker_error_without_false_terminal_state(caplog):
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="lost-delivery-task",
+    )
+    Run.objects.filter(pk=run.id).update(queued_at=timezone.now() - timedelta(seconds=31))
+    with caplog.at_level("ERROR"):
+        with patch.object(tasks.execute_run_job, "apply_async", side_effect=RuntimeError("redis://secret@broker")):
+            tasks.cleanup_expired_runs()
+
+    run.refresh_from_db()
+    assert run.status == Run.Status.PENDING and run.requeue_count == 1
+    assert run.finished_at is None and run.error == {}
+    assert "secret" not in caplog.text
+
+    Run.objects.filter(pk=run.id).update(queued_at=timezone.now() - timedelta(seconds=31))
+    with patch.object(tasks.execute_run_job, "apply_async") as recovered:
+        tasks.cleanup_expired_runs()
+    run.refresh_from_db()
+    assert run.status == Run.Status.PENDING and run.requeue_count == 2
+    recovered.assert_called_once()
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, PENDING_DELIVERY_SECONDS=30)
+def test_expired_pending_run_is_deleted_without_reenqueue():
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="expired-pending-task", expires_at=timezone.now() - timedelta(seconds=1),
+    )
+    Run.objects.filter(pk=run.id).update(queued_at=timezone.now() - timedelta(seconds=31))
+
+    with patch.object(tasks.execute_run_job, "apply_async") as enqueue:
+        tasks.cleanup_expired_runs()
+
+    assert not Run.objects.filter(pk=run.id).exists()
+    enqueue.assert_not_called()
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, RUN_MONITOR_SECONDS=0, RUN_HEARTBEAT_SECONDS=30)
+def test_running_cancel_terminates_only_isolated_child_and_discards_late_output(api_client, monkeypatch):
+    """The reusable Celery worker must survive while its one calculation child is stopped."""
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={
+            "alpha": 0.85, "max_iterations": 200, "tolerance": 1e-6,
+        }, seed=7, task_id="isolated-child-task",
+    )
+    observed = {"started": False, "terminated": False, "killed": False}
+
+    class Child:
+        returncode = None
+
+        def poll(self):
+            if not observed["started"]:
+                observed["started"] = True
+                response = api_client.post(f"/api/runs/{run.id}/cancel/", {}, format="json")
+                assert response.status_code == 200
+            return self.returncode
+
+        def terminate(self):
+            observed["terminated"] = True
+            self.returncode = -15
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            observed["killed"] = True
+            self.returncode = -9
+
+    def start_child(current, request_path, result_path):
+        result_path.write_text('{"ok":true,"result":{"tables":[{"key":"late"}]}}', encoding="utf-8")
+        return Child()
+
+    monkeypatch.setattr(tasks, "start_algorithm_subprocess", start_child, raising=False)
+    with patch.object(current_app.control, "revoke") as revoke:
+        state = tasks.execute_run_job(str(run.id))
+
+    run.refresh_from_db()
+    assert state == Run.Status.CANCELLED
+    assert run.status == Run.Status.CANCELLED and run.result == {}
+    assert observed == {"started": True, "terminated": True, "killed": False}
+    revoke.assert_not_called()
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False)
+def test_cancelled_pending_delivery_never_launches_an_algorithm_child(api_client, monkeypatch):
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={
+            "alpha": 0.85, "max_iterations": 200, "tolerance": 1e-6,
+        }, seed=7, task_id="cancelled-before-claim",
+    )
+    with patch.object(current_app.control, "revoke"):
+        response = api_client.post(f"/api/runs/{run.id}/cancel/", {}, format="json")
+    assert response.status_code == 200
+
+    def forbidden_start(*_args, **_kwargs):
+        raise AssertionError("a cancelled pending job must never create its isolated child")
+
+    monkeypatch.setattr(tasks, "start_algorithm_subprocess", forbidden_start, raising=False)
+    assert tasks.execute_run_job(str(run.id)) == Run.Status.CANCELLED
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, RUN_MONITOR_SECONDS=0.01)
+def test_production_worker_computes_real_result_outside_the_reusable_celery_process(monkeypatch):
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={
+            "alpha": 0.85, "max_iterations": 200, "tolerance": 1e-6,
+        }, seed=7, task_id="real-isolated-task",
+    )
+
+    def forbidden_in_worker(*_args, **_kwargs):
+        raise AssertionError("the reusable Celery process must not execute the algorithm body")
+
+    monkeypatch.setattr(tasks, "execute_algorithm", forbidden_in_worker)
+    assert tasks.execute_run_job(str(run.id)) == Run.Status.COMPLETED
+    run.refresh_from_db()
+    assert run.result["tables"]
+
+
+def test_isolated_runner_logs_real_sanitized_trace_with_run_identifiers(tmp_path, monkeypatch, caplog):
+    request_path = tmp_path / "request.json"
+    result_path = tmp_path / "result.json"
+    request_path.write_text(json.dumps({
+        "run_id": "run-safe-id", "task_id": "task-safe-id", "algorithm": "centrality.pagerank",
+        "graph": {"private": "GRAPH-CONTENT-SECRET"}, "parameters": {}, "seed": 7,
+    }), encoding="utf-8")
+    monkeypatch.setattr(
+        job_runner, "execute_algorithm",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("GRAPH-CONTENT-SECRET")),
+    )
+
+    with caplog.at_level("ERROR"):
+        assert job_runner.main(str(request_path), str(result_path)) == 0
+
+    record = next(record for record in caplog.records if record.name == "learning.job_runner")
+    assert "run-safe-id" in caplog.text and "task-safe-id" in caplog.text and "centrality.pagerank" in caplog.text
+    assert "GRAPH-CONTENT-SECRET" not in caplog.text
+    assert record.exc_info is not None
+    assert record.exc_info[2].tb_frame.f_code.co_name == "main"
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, RUN_MONITOR_SECONDS=0)
+def test_two_hour_expiry_cleanup_stops_an_isolated_child_without_resurrecting_the_row(monkeypatch):
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="expiry-child-task",
+    )
+    observed = {"polled": False, "terminated": False}
+
+    class Child:
+        returncode = None
+
+        def poll(self):
+            if not observed["polled"]:
+                observed["polled"] = True
+                Run.objects.filter(pk=run.id).update(expires_at=timezone.now() - timedelta(seconds=1))
+                tasks.cleanup_expired_runs()
+            return self.returncode
+
+        def terminate(self):
+            observed["terminated"] = True
+            self.returncode = -15
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+        def kill(self):
+            raise AssertionError("the cooperative isolated child should stop during its grace period")
+
+    monkeypatch.setattr(tasks, "start_algorithm_subprocess", lambda *_args: Child())
+
+    assert tasks.execute_run_job(str(run.id)) == "expired"
+    assert observed == {"polled": True, "terminated": True}
+    assert not Run.objects.filter(pk=run.id).exists()
+
+
+def test_isolated_child_environment_is_a_runtime_allowlist_not_a_secret_denylist(monkeypatch):
+    monkeypatch.setenv("PATH", "safe-runtime-path")
+    monkeypatch.setenv("EXTERNAL_API_KEY", "must-not-cross-boundary")
+    monkeypatch.setenv("UNFAMILIAR_CREDENTIAL", "must-not-cross-boundary")
+    monkeypatch.setenv("OMP_NUM_THREADS", "2")
+
+    child_environment = tasks._runner_environment()
+
+    assert child_environment["PATH"] == "safe-runtime-path"
+    assert child_environment["OMP_NUM_THREADS"] == "2"
+    assert "EXTERNAL_API_KEY" not in child_environment
+    assert "UNFAMILIAR_CREDENTIAL" not in child_environment

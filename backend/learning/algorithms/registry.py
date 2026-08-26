@@ -134,13 +134,13 @@ for key, name, formula, limitation in [
         parameters={
             "test_fraction": parameter("number", 0.2, "AUC 留出边比例。", minimum=0, maximum=0.8),
             "candidate_limit": parameter(
-                "integer", 10_000, "本次最多流式评分的候选节点对。", minimum=1, maximum=50_000,
+                "integer", 50_000, "候选节点对准入上限；准入后对全部候选评分并保留全局最高分。", minimum=1, maximum=50_000,
             ),
             "top_k": parameter(
                 "integer", 100, "结果中保留的最高分候选链路数。", minimum=1, maximum=500,
             ),
         },
-        max_nodes=500, max_edges=5_000, version="1.1",
+        max_nodes=300, max_edges=5_000, version="1.2",
     ))
 
 

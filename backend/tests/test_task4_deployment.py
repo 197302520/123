@@ -1,9 +1,12 @@
 import subprocess
 import sys
 import os
+import io
+import http.cookiejar
+import urllib.request
+import urllib.response
+from email.message import Message
 from pathlib import Path
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import Thread
 
 import pytest
 import yaml
@@ -29,6 +32,19 @@ def test_production_compose_separates_worker_scheduler_and_declares_optional_ml_
     assert compose["frontend"]["ports"] == ["127.0.0.1:8080:80"]
     assert compose["web"]["environment"]["CACHE_URL"] == "redis://redis:6379/1"
     assert "--queues=default" in compose["worker"]["command"]
+    healthcheck = " ".join(compose["web"]["healthcheck"]["test"])
+    assert "/api/health/" in healthcheck
+    assert "urllib.request" in healthcheck
+    assert "DJANGO_ALLOWED_HOSTS" in healthcheck
+    assert "X-Forwarded-Proto" in healthcheck and "https" in healthcheck
+    assert "manage.py check" not in healthcheck
+
+
+def test_health_endpoint_proves_the_django_http_stack_is_listening():
+    response = Client().get("/api/health/")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
 
 
 def test_release_and_load_verification_scripts_are_bounded_and_executable_in_dry_run():
@@ -124,42 +140,37 @@ def test_production_image_collects_and_serves_styled_django_admin_static(tmp_pat
     assert len(b"".join(response.streaming_content)) > 1_000
 
 
-def test_load_student_keeps_one_anonymous_session_cookie_for_submit_status_and_result():
+def test_load_student_keeps_one_anonymous_session_cookie_for_submit_status_and_result(monkeypatch):
     """A new cookie on every request would not exercise the production session throttle realistically."""
     from scripts import load_test
 
     observed_cookies: list[str] = []
 
-    class Handler(BaseHTTPRequestHandler):
-        def log_message(self, format, *args):
-            return
+    class InMemoryHttpTransport(urllib.request.BaseHandler):
+        handler_order = 100
 
-        def _json(self, payload, *, cookie=None):
+        def http_open(self, request):
+            headers = Message()
+            headers["Content-Type"] = "application/json"
+            if request.data is not None:
+                payload = {"id": "run-cookie", "status": "completed"}
+                headers["Set-Cookie"] = "sessionid=student-session; Path=/"
+                status_code = 201
+            else:
+                observed_cookies.append(request.get_header("Cookie", ""))
+                payload = {"tables": [{"key": "result"}]}
+                status_code = 200
             encoded = __import__("json").dumps(payload).encode()
-            self.send_response(200 if self.command == "GET" else 201)
-            self.send_header("Content-Type", "application/json")
-            if cookie:
-                self.send_header("Set-Cookie", cookie)
-            self.send_header("Content-Length", str(len(encoded)))
-            self.end_headers()
-            self.wfile.write(encoded)
+            headers["Content-Length"] = str(len(encoded))
+            response = urllib.response.addinfourl(io.BytesIO(encoded), headers, request.full_url, status_code)
+            response.msg = "OK"
+            return response
 
-        def do_POST(self):
-            self._json({"id": "run-cookie", "status": "completed"}, cookie="sessionid=student-session; Path=/")
-
-        def do_GET(self):
-            observed_cookies.append(self.headers.get("Cookie", ""))
-            self._json({"tables": [{"key": "result"}]})
-
-    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
-    thread = Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    try:
-        run_id = load_test.one_student(f"http://127.0.0.1:{server.server_port}", 2, 0)
-    finally:
-        server.shutdown()
-        server.server_close()
-        thread.join(timeout=2)
+    opener = urllib.request.build_opener(
+        urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()), InMemoryHttpTransport(),
+    )
+    monkeypatch.setattr(load_test.urllib.request, "build_opener", lambda *_handlers: opener)
+    run_id = load_test.one_student("http://127.0.0.1", 2, 0)
 
     assert run_id == "run-cookie"
     assert observed_cookies == ["sessionid=student-session"]

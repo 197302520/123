@@ -15,7 +15,9 @@ docker compose --env-file .env.production -f compose.prod.yaml up -d postgres re
 
 生产 Web 使用 Gunicorn；Celery worker 与 beat 分离，避免重复执行两小时清理任务。测试环境默认同步执行，生产 Compose 明确关闭 eager 模式并使用 Redis 队列。Web 镜像构建时已执行 `collectstatic`，WhiteNoise 提供带哈希的 Django Admin 静态资源，内层 Nginx 将 `/static/` 与 `/admin/` 一并转发到 Web 容器。可选 GCN/GAT 镜像使用 `--profile ml` 构建；未启用时相关算法明确返回能力不可用，不伪造结果。
 
-运行中任务持有可续约租约：worker 每 `RUN_HEARTBEAT_SECONDS` 续约，beat 只回收已过 `RUN_LEASE_SECONDS` 的租约。丢失的 pending 投递在 `PENDING_DELIVERY_SECONDS` 后以原 task ID 有界重投，worker 的原子状态声明阻止重复执行。公开取消对 pending 任务只撤销投递；对 running 任务使用 Celery `terminate=True` 与 `SIGTERM`，让 worker 子进程可被安全替换。不要配置 `SIGKILL`；无论终止与完成如何竞争，数据库只允许 `running`→终态的条件写入，已取消/已失败不会被迟到结果覆盖。
+运行中任务持有可续约租约：生产 Celery worker 不直接计算算法，而是为每个作业启动一次性隔离子进程，由 worker 每 `RUN_MONITOR_SECONDS` 检查状态并续约。取消 running 任务时只写入数据库取消标记；监督循环随后温和终止该作业的隔离子进程，宽限 `RUN_CHILD_TERMINATE_GRACE_SECONDS` 后才强制结束它，绝不终止或替换可复用的 Celery worker。丢失的 pending 投递在 `PENDING_DELIVERY_SECONDS` 后以原 task ID 按有界时间间隔重投；只要任务未被认领、取消或达到两小时保留期限，就保持真实的 pending 状态，不因重投次数伪造失败。broker 暂时不可用时记录不含输入内容的异常并等待下次重投。worker 的原子状态声明阻止重复执行，终态条件写入确保已取消/租约失败不会被迟到结果覆盖。测试环境保留确定性的进程内 eager 路径。
+
+链路预测的 `candidate_limit` 是准入上限，不是按节点 ID 截断的前缀：候选总数超过上限时拒绝运行；准入后使用有界堆遍历全部候选并返回全局 `top_k`，报告记录实际评估数。GraphML 复现包使用 `sna_graphspec_v1` 标记和 `sna_attributes_json` 属性信封；只有带该标记的文件会解码复杂属性，第三方同名普通标量不会被误解释。
 
 ## HTTPS、域名与境内部署
 
@@ -41,7 +43,7 @@ docker compose --env-file .env.production -f compose.prod.yaml up -d web worker 
 
 ## 监控与故障处置
 
-监控容器健康、HTTP 5xx/429、P95 请求时间、Celery pending/running/failed/cancelled 数、租约过期和 pending 重投次数、Redis 内存、PostgreSQL 连接/磁盘、备份时间与两小时清理滞后。日志只记录请求元数据、运行 ID、算法和状态，不记录上传内容、图正文或企业文本。告警后按运行 ID 排查；失败结果只暴露结构化安全错误。
+监控容器健康（Web 健康检查会实际请求 Gunicorn 的 `/api/health/`）、HTTP 5xx/429、P95 请求时间、Celery pending/running/failed/cancelled 数、租约过期和 pending 重投次数、Redis 内存、PostgreSQL 连接/磁盘、备份时间与两小时清理滞后。日志只记录请求元数据、运行 ID、算法和状态，不记录上传内容、图正文或企业文本。告警后按运行 ID 排查；失败结果只暴露结构化安全错误。
 
 ## 验证与容量演练
 

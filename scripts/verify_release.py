@@ -1,21 +1,24 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
+NPM = shutil.which("npm.cmd" if os.name == "nt" else "npm") or "npm"
 COMMANDS = [
     ([sys.executable, "-m", "pytest", "backend/tests", "-q"], ROOT),
     ([sys.executable, "backend/manage.py", "check"], ROOT),
     ([sys.executable, "backend/manage.py", "makemigrations", "--check", "--dry-run"], ROOT),
     ([sys.executable, "-m", "pip", "check"], ROOT),
     ([sys.executable, "scripts/validate_compose.py"], ROOT),
-    (["npm", "test", "--", "--run"], ROOT / "frontend"),
-    (["npm", "run", "build"], ROOT / "frontend"),
-    (["npm", "audit", "--audit-level=high"], ROOT / "frontend"),
+    ([NPM, "test", "--", "--run"], ROOT / "frontend"),
+    ([NPM, "run", "build"], ROOT / "frontend"),
+    ([NPM, "audit", "--audit-level=high"], ROOT / "frontend"),
 ]
 
 

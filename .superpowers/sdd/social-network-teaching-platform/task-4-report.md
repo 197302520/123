@@ -96,8 +96,8 @@ No broken requirements found.
 python scripts/validate_compose.py
 compose contract valid
 
-python scripts/verify_release.py --dry-run
-all bounded release commands enumerated successfully
+python scripts/verify_release.py --timeout 300
+full bounded release gate repeated successfully: backend 205 passed; Django, migrations, dependency, and Compose checks green; frontend 92 passed; build green; npm audit found 0 vulnerabilities
 
 python scripts/load_test.py --dry-run --students 90 --max-jobs 30 --deadline 120
 students=90 max_jobs=30 deadline=120s
@@ -287,3 +287,91 @@ no whitespace errors (only repository LF-to-CRLF notices)
 - Full tests still emit the existing development-only WhiteNoise warning that `backend/staticfiles` is absent before `collectstatic`; production image collection and a temporary-root executable static-serving test are green.
 - Vite retains the pre-existing nonfatal lazy `ResultsPanel` chunk warning (608.76 kB minified / 207.24 kB gzip).
 - Manual standards/spec self-review found no remaining Task 4 blocker. The available code-review skill normally delegates two independent axes, but the task explicitly prohibited subagents, so both axes were applied locally. Unrelated `extract_docx.py`, `说明书_提取.txt`, and `.mimosa` remain untouched and unstaged.
+
+## Final review-fix appendix — 2026-08-26
+
+This appendix supersedes the second-review statements about candidate truncation, retry-count failure, and Celery worker termination. The seven seeded cases, provenance inventory, anonymous E2E report path, teacher boundary, upload controls, cache key, and prior security controls remain unchanged and green.
+
+### Final corrective contracts
+
+- **Truthful pending recovery:** a failed initial broker submission remains `pending` with an empty result/error and a stable task ID. Beat atomically advances `queued_at` and re-enqueues at `PENDING_DELIVERY_SECONDS`; it never converts a healthy backlog to a fabricated failure based on retry count. Broker errors are sanitized and wait for the next bounded interval. Expired rows are deleted before recovery selection and are also excluded in both the selection and atomic claim. A nine-minute/99-requeue backlog, lost delivery followed by broker recovery, duplicate delivery, and expired pending exclusion are tested.
+- **Safe running cancellation:** production (`CELERY_TASK_ALWAYS_EAGER=False`) Celery workers supervise `python -m learning.job_runner` as a one-shot process with a private request/result directory. The child receives no broker/database/application secret environment variables. The supervisor polls database state, renews the lease, and terminates only that child after cancellation; it never calls Celery `terminate=True`. Pending cancellation uses non-terminating revoke and never launches a child. Success/error writes remain conditional on `running`, so cancellation, lease failure, and expiry win every race and late output is discarded. Two-hour deletion stops the child and returns an internal `expired` outcome without recreating the row. Eager tests retain deterministic in-process execution.
+- **Operational logging:** both eager and isolated unexpected failures log the real traceback object with run/task/algorithm identifiers through the sanitizer; exception/input text and graph content are suppressed. The isolated child inherits only stderr for this content-free operational trace while stdout is discarded.
+- **Long-job UI:** polling exhaustion now raises a typed `RunStillActiveError`, sets the Chinese background state “任务仍在后台运行，可继续查询状态或取消任务。”, and retains the run ID plus immutable request context. Explicit “继续查询状态” resumes the same ID through completion; “取消后台任务” reports server failure without silently losing the capability; whole reset remains deliberate. Tests cover timeout→resume→nonempty completed result and timeout→cancel.
+- **GraphML envelope:** exports identify platform files with graph marker `sna_graphspec_v1` and node key `sna_attributes_json`. Only that positive marker enables JSON decoding. Third-party scalar data named `attributes` imports as an ordinary attribute. Export→import preserves citation feature vectors, the display label, and an independent GraphSpec attribute also named `label`; AE consumes the round-tripped features.
+- **Global bounded link prediction:** registry version 1.2 limits all four public methods to 300 nodes/5,000 edges, `candidate_limit≤50,000`, and `top_k≤500`; all remain in the heavy throttle bucket. Candidate count is an admission check: oversized candidate spaces fail with a parameter-path error. Admitted runs traverse every nonedge, retain only the global `top_k` through a bounded heap, keep AUC samples bounded, and report the exact evaluated/total count with `candidate_pairs_truncated=false`. Tests reject the old lexicographic-prefix behavior and place the best pair late in node-ID order.
+- **Executable Web liveness:** `/api/health/` returns only `{"status":"ok"}`. Compose now performs a real HTTP request to Gunicorn, using the first configured allowed host and the trusted HTTPS forwarded-protocol header so production host validation and SSL redirect do not turn the probe into a false failure.
+
+### Final RED/GREEN evidence
+
+The first focused backend RED run was `11 failed, 19 passed`, covering broker truthfulness, running cancellation without Celery termination, healthy backlog retention, expired-pending ordering, isolated-child cancellation, GraphML envelope/collisions, lower link limits/global admission, and HTTP health. The focused frontend RED run was `4 failed, 5 passed`, covering typed background timeout, resume, retained controls, and explicit cancellation. Additional isolated RED runs recorded `1 failed` each for child traceback identifiers, trusted Host/HTTPS health headers, stopping an isolated child when two-hour cleanup deletes its row, and replacing a credential denylist with a runtime environment allowlist.
+
+Focused GREEN:
+
+```text
+python -m pytest backend/tests/test_task4_security.py backend/tests/test_task4_queue_cache.py backend/tests/test_task4_link_prediction.py backend/tests/test_task4_deployment.py backend/tests/test_task4_cases_e2e.py -q
+75 passed in 8.56s
+
+frontend: npm test -- --run src/lab/runMachine.test.ts src/views/LabView.background.test.ts
+9 passed
+```
+
+### Final verification
+
+```text
+python -m pip install -e "backend[dev]"
+succeeded; all constrained backend/runtime/test dependencies resolved
+
+python -m pytest backend/tests -q
+205 passed in 9.71s
+
+frontend: npm ci --ignore-scripts
+267 packages installed; 0 vulnerabilities
+
+frontend: npm test -- --run
+21 test files passed; 92 tests passed
+
+frontend: npm run build
+vue-tsc -b && vite build; 661 modules transformed; built in 8.53s
+
+python backend/manage.py check
+System check identified no issues (0 silenced).
+
+python backend/manage.py check --deploy  # production TLS/host/origin/proxy env
+System check identified no issues (0 silenced).
+
+python backend/manage.py makemigrations --check --dry-run
+No changes detected
+
+python backend/manage.py migrate --plan
+0003/0004/0005 operations enumerated
+
+python -m pip check
+No broken requirements found.
+
+python scripts/validate_compose.py compose.prod.yaml
+compose contract valid
+
+python scripts/verify_release.py --dry-run
+all bounded release commands enumerated successfully
+
+python scripts/load_test.py --dry-run --students 90 --max-jobs 30
+students=90 max_jobs=30 distinct_jobs=90 deadline=120s
+
+frontend: npm audit --audit-level=high
+found 0 vulnerabilities
+
+git diff --check
+no whitespace errors (only repository LF-to-CRLF notices)
+```
+
+### Final files and concerns
+
+- Backend runtime changes: `learning/tasks.py`, new `learning/job_runner.py`, `learning/views.py`, `learning/urls.py`, and `config/settings.py`.
+- Algorithm/import changes: `algorithms/prediction.py`, `algorithms/registry.py`, `algorithms/exports.py`, and `safe_imports.py`.
+- Frontend changes: `lab/runMachine.ts`, `components/RunStatus.vue`, `views/LabView.vue`, and their focused tests, including new `LabView.background.test.ts`.
+- Production/tests/docs: `compose.prod.yaml`, `.env.production.example`, `docs/deployment.md`, `scripts/verify_release.py`, and four Task 4 backend test modules. No migration is needed.
+- Docker is still unavailable locally, so live Redis/Celery process supervision, outer-proxy TLS, PostgreSQL restore, optional ML image, and the 90-student/30-job capacity run remain staging checks; executable subprocess, HTTP, settings, Compose, and script contracts are green locally. No browser screenshot or Docker run is claimed.
+- Vite retains the existing nonfatal lazy `ResultsPanel` chunk warning (608.76 kB minified / 207.24 kB gzip). Frozen npm installation still warns about dev-only transitive `glob@10.5.0` and `whatwg-encoding`; the resolved tree reports zero vulnerabilities.
+- A Windows-only localhost socket teardown flake in the load-tool cookie contract was removed by exercising the same `HTTPCookieProcessor` through an in-memory HTTP opener transport; this still proves Set-Cookie propagation across submit/result without an irrelevant operating-system socket dependency. Final full backend verification is green.
+- Unrelated `extract_docx.py`, `说明书_提取.txt`, and `.mimosa` remain untouched and will not be staged.

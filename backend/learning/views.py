@@ -7,7 +7,7 @@ from typing import Any
 from celery import current_app
 from django.conf import settings
 from django.db import transaction
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.parsers import MultiPartParser
@@ -33,6 +33,11 @@ from .throttles import (
 
 
 logger = logging.getLogger(__name__)
+
+
+def health(_request):
+    """Lightweight liveness probe that traverses the deployed HTTP application stack."""
+    return JsonResponse({"status": "ok"})
 
 
 def public_modules():
@@ -259,16 +264,8 @@ class RunListView(APIView):
                         "Queue submission failed run_id=%s task_id=%s algorithm=%s",
                         str(run.id), run.task_id, run.algorithm, exc=exc,
                     )
-                    queue_error = {
-                        "code": "queue_unavailable",
-                        "message": "任务队列暂时不可用，请稍后重试。",
-                        "path": "",
-                    }
-                    run.status = Run.Status.FAILED
-                    run.error = queue_error
-                    run.finished_at = timezone.now()
-                    run.save(update_fields=["status", "error", "finished_at"])
-                    return Response({"error": queue_error}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+                    # Keep a truthful pending state. Beat retries this same task id after the
+                    # bounded delivery interval, so a transient broker outage is recoverable.
         return Response(run_payload(run), status=status.HTTP_201_CREATED)
 
 
@@ -277,38 +274,32 @@ class RunCancelView(APIView):
     throttle_classes = [PublicOperationIPThrottle, PublicOperationSessionThrottle]
 
     def post(self, request: Request, run_id: str) -> Response:
-        terminate = False
         try:
             with transaction.atomic():
                 run = Run.objects.select_for_update().filter(expires_at__gt=timezone.now()).get(pk=run_id)
                 if run.status == Run.Status.CANCELLED:
                     if not run.cancel_revoke_pending or not run.task_id:
                         return Response(run_payload(run))
-                    terminate = run.started_at is not None
                 elif run.status not in {Run.Status.PENDING, Run.Status.RUNNING}:
                     return Response(run_payload(run), status=status.HTTP_409_CONFLICT)
                 else:
-                    terminate = run.status == Run.Status.RUNNING
+                    needs_pending_revoke = run.status == Run.Status.PENDING and bool(run.task_id)
                     run.status = Run.Status.CANCELLED
                     run.result = {}
                     run.error = {"code": "cancelled", "message": "任务已取消。", "path": ""}
                     run.finished_at = timezone.now()
                     run.lease_expires_at = None
-                    run.cancel_revoke_pending = bool(run.task_id)
+                    run.cancel_revoke_pending = needs_pending_revoke
                     run.save(update_fields=[
                         "status", "result", "error", "finished_at", "lease_expires_at", "cancel_revoke_pending",
                     ])
                 task_id = run.task_id
+                needs_pending_revoke = run.cancel_revoke_pending
         except (Run.DoesNotExist, ValueError) as exc:
             raise Http404 from exc
-        if task_id:
+        if task_id and needs_pending_revoke:
             try:
-                if terminate:
-                    current_app.control.revoke(
-                        task_id, terminate=True, signal=getattr(settings, "CELERY_CANCEL_SIGNAL", "SIGTERM"),
-                    )
-                else:
-                    current_app.control.revoke(task_id, terminate=False)
+                current_app.control.revoke(task_id, terminate=False)
             except Exception as exc:
                 log_sanitized_exception(
                     logger, "Queue revoke failed run_id=%s task_id=%s algorithm=%s",
