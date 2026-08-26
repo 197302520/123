@@ -77,7 +77,7 @@ describe('backend overlay visual encoding', () => {
     } })
 
     expect(latestElements().find((item) => item.data.id === 'edge-0')!.data.predicted).toBe(0)
-    expect(await latestEdgeStyle('edge-0')).toEqual({ lineColor: 'rgb(120,144,135)', lineStyle: 'solid' })
+    expect(await latestEdgeStyle('edge-0')).toEqual({ lineColor: 'rgb(159,176,166)', lineStyle: 'solid' })
   })
 
   test('marks a backend predicted edge with the red dashed result style', async () => {
@@ -88,7 +88,7 @@ describe('backend overlay visual encoding', () => {
 
     const edges = latestElements().filter((item) => String(item.data.id).startsWith('edge-'))
     expect(edges.map((item) => item.data.predicted)).toEqual([0, 0, 1])
-    expect(await latestEdgeStyle('edge-2')).toEqual({ lineColor: 'rgb(179,74,50)', lineStyle: 'dashed' })
+    expect(await latestEdgeStyle('edge-2')).toEqual({ lineColor: 'rgb(217,90,58)', lineStyle: 'dashed' })
   })
 
   test('encodes both HITS hub and authority values in node size, color, and label', () => {

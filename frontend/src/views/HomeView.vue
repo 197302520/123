@@ -47,10 +47,16 @@ onMounted(async () => {
       </div>
     </section>
 
+    <!-- 平台公告条 -->
+    <div class="notice-bar" role="note" aria-label="平台公告">
+      <span class="notice-tag">公告</span>
+      <p>42 种算法全部真实可运行：Leiden、GCN、GAT 依赖已内置；海豚案例已更新为 Lusseau 真实数据集（62 海豚 / 159 关联）。</p>
+      <RouterLink to="/courses/communities">查看社区发现模块 →</RouterLink>
+    </div>
+
     <!-- 怎么用：三步 -->
     <section aria-labelledby="steps-title">
-      <div class="home-heading">
-        <p class="eyebrow">HOW TO USE</p>
+      <div class="portal-section-head">
         <h2 id="steps-title">三步完成一次网络分析</h2>
         <p>数据、算法、结果三段式推进，分析报告一键导出。</p>
       </div>
@@ -75,45 +81,42 @@ onMounted(async () => {
 
     <p v-if="error" class="state-message error" role="alert">{{ error }}</p>
 
-    <!-- 七个课程模块 -->
+    <!-- 七个模块：学习路径 -->
     <section class="home-modules" aria-labelledby="modules-title">
-      <div class="home-heading">
-        <p class="eyebrow">COURSE MODULES</p>
-        <h2 id="modules-title">七个模块，覆盖课程全部知识点</h2>
-        <p>每个模块配有公式讲解与配套案例，点击进入学习。</p>
+      <div class="portal-section-head">
+        <h2 id="modules-title">七个模块，一条学习路径</h2>
+        <RouterLink class="more-link" to="/courses">查看完整课程</RouterLink>
       </div>
       <p v-if="loading" class="state-message" role="status">正在加载课程目录…</p>
       <p v-else-if="!modules.length && !error" class="state-message empty">课程目录暂未发布，可先进入自由实验室练习。</p>
-      <ol v-else class="module-grid">
-        <li v-for="module in modules" :key="module.slug">
-          <RouterLink class="module-card" :to="`/courses/${module.slug}`">
-            <span class="module-no">模块{{ moduleEditorial(module.slug)?.numeral }}</span>
+      <ol v-else class="module-path">
+        <li v-for="module in modules" :key="module.slug" class="path-stop">
+          <span class="path-node" aria-hidden="true">{{ moduleEditorial(module.slug)?.numeral }}</span>
+          <RouterLink class="path-card" :to="`/courses/${module.slug}`">
             <strong>{{ moduleEditorial(module.slug)?.accent ?? module.title }}</strong>
             <small>{{ moduleEditorial(module.slug)?.question ?? module.summary }}</small>
+            <i>模块{{ moduleEditorial(module.slug)?.numeral }} · 进入</i>
           </RouterLink>
         </li>
       </ol>
-      <RouterLink class="button secondary home-more" to="/courses">查看完整课程</RouterLink>
     </section>
 
     <!-- 推荐案例 -->
     <section class="home-cases" aria-labelledby="cases-title">
-      <div class="home-heading">
-        <p class="eyebrow">FEATURED CASES</p>
+      <div class="portal-section-head">
         <h2 id="cases-title">从经典案例开始上手</h2>
-        <p>每个案例按六步研习组织，可一键把案例数据载入实验室复现分析。</p>
+        <RouterLink class="more-link" to="/cases">更多案例</RouterLink>
       </div>
       <p v-if="loading" class="state-message" role="status">正在整理案例索引…</p>
       <p v-else-if="!cases.length && !error" class="state-message empty">案例索引暂未发布，可从课程模块了解分析方法。</p>
       <div v-else class="case-cards">
-        <RouterLink v-for="item in cases.slice(0, 3)" :key="item.slug" class="case-card" :to="`/cases/${item.slug}`">
-          <span>案例</span>
+        <RouterLink v-for="(item, index) in cases.slice(0, 3)" :key="item.slug" class="case-card" :to="`/cases/${item.slug}`">
+          <span class="case-card-index" aria-hidden="true">{{ String(index + 1).padStart(2, '0') }}<i>案例</i></span>
           <strong>{{ item.title }}</strong>
           <small>{{ item.summary }}</small>
-          <i>进入案例研习 →</i>
+          <i class="case-card-enter">进入案例研习</i>
         </RouterLink>
       </div>
-      <RouterLink class="button secondary home-more" to="/cases">浏览全部案例</RouterLink>
     </section>
   </div>
 </template>

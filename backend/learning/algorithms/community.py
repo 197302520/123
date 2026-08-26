@@ -91,7 +91,7 @@ def _partition_bundle(network: nx.Graph, communities: Iterable[Iterable[Any]], *
         {"node": str(node), "community": memberships[node][0], "memberships": memberships[node]}
         for node in sorted(network.nodes, key=str)
     ]
-    palette = ["#0f766e", "#b45309", "#4338ca", "#be123c", "#047857", "#7e22ce"]
+    palette = ["#0f6b4f", "#e8930c", "#6d5a8e", "#d95a3a", "#2f9e8f", "#0d8a63"]
     styles = {row["node"]: {"community": row["community"], "color": palette[row["community"] % len(palette)]} for row in rows}
     modularity = None
     disjoint = all(len(value) == 1 for value in memberships.values())

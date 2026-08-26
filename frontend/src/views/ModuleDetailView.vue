@@ -8,9 +8,19 @@ const props = defineProps<{ slug: string }>()
 const module = ref<CourseModuleDetail | null>(null)
 const cases = ref<CaseSummary[]>([])
 const algorithms = ref<AlgorithmSpec[]>([])
+const algorithmsLoaded = ref(false)
 const error = ref('')
 const editorial = computed(() => moduleEditorial(props.slug))
-const moduleAlgorithms = computed(() => algorithms.value.filter((item) => item.module === props.slug))
+// 兜底：若后端尚未提供 module 字段（旧进程），按 key 前缀推断归属，页面不空转。
+const MODULE_BY_PREFIX: Record<string, string> = {
+  graph: 'network-basics', text: 'network-basics', export: 'network-basics', model: 'network-basics',
+  topology: 'network-measures', paths: 'network-measures', clustering: 'network-measures',
+  centrality: 'network-measures', embedding: 'network-measures',
+  community: 'communities', opinion: 'diffusion', robustness: 'robustness', link_prediction: 'link-prediction',
+}
+const moduleAlgorithms = computed(() =>
+  algorithms.value.filter((item) => (item.module || MODULE_BY_PREFIX[item.key.split('.')[0]] || 'other') === props.slug),
+)
 let loadRevision = 0
 async function load(slug: string) {
   const revision = ++loadRevision
@@ -20,7 +30,8 @@ async function load(slug: string) {
     if (revision !== loadRevision) return
     module.value = detail
     cases.value = allCases.filter((item) => item.module === slug)
-    algorithms.value = registry
+    algorithms.value = Array.isArray(registry) ? registry : []
+    algorithmsLoaded.value = true
   } catch (reason) { if (revision === loadRevision) error.value = reason instanceof Error ? reason.message : '无法加载模块。' }
 }
 watch(() => props.slug, load, { immediate: true })
@@ -48,10 +59,12 @@ function graphTypeLabel(algorithm: AlgorithmSpec): string {
       <section class="module-algorithms" aria-labelledby="module-algorithms-title">
         <div class="home-heading">
           <p class="eyebrow">METHODS IN THIS MODULE</p>
-          <h2 id="module-algorithms-title">本模块的 {{ moduleAlgorithms.length }} 个可运行算法</h2>
+          <h2 v-if="algorithmsLoaded" id="module-algorithms-title">本模块的 {{ moduleAlgorithms.length }} 个可运行算法</h2>
+          <h2 v-else id="module-algorithms-title">正在载入算法目录…</h2>
           <p>每个算法都是后端真实计算：点开即进入实验工作台，公式、参数、随机种子与结果可复现。</p>
         </div>
-        <p v-if="!moduleAlgorithms.length" class="state-message" role="status">本模块的算法目录正在载入…</p>
+        <p v-if="!algorithmsLoaded" class="state-message" role="status">正在从后端读取算法注册表…</p>
+        <p v-else-if="!moduleAlgorithms.length" class="state-message empty">本模块暂无已发布算法，可先进入自由实验室练习。</p>
         <div v-else class="algorithm-grid">
           <RouterLink v-for="algorithm in moduleAlgorithms" :key="algorithm.key" class="algorithm-card" :to="{ path: '/lab', query: { algorithm: algorithm.key } }">
             <span class="algorithm-chip">v{{ algorithm.version }} · {{ graphTypeLabel(algorithm) }}</span>

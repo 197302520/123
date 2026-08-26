@@ -15,8 +15,8 @@ onMounted(async () => {
   try {
     const THREE = await import('three')
     const scene = new THREE.Scene()
-    const camera = new THREE.PerspectiveCamera(46, 1, 0.1, 100)
-    camera.position.set(0, 0, 8.6)
+    const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100)
+    camera.position.set(0, 0.4, 7.6)
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
@@ -33,11 +33,11 @@ onMounted(async () => {
       return state / 2_147_483_648
     }
 
-    const nodeCount = 46
-    const nodeColors = [0x0e8a5f, 0x12a06e, 0x0f766e, 0x6d5a8e, 0xb45309]
+    const nodeCount = 52
+    const nodeColors = [0x0f6b4f, 0x0d8a63, 0x6d5a8e, 0xe8930c, 0x2f9e8f]
     const positions: Array<[number, number, number]> = []
     const nodeMeshes: Array<{ mesh: import('three').Mesh; phase: number }> = []
-    const sphereGeometry = new THREE.SphereGeometry(1, 22, 22)
+    const sphereGeometry = new THREE.SphereGeometry(1, 20, 20)
     for (let index = 0; index < nodeCount; index += 1) {
       // 球面 Fibonacci 分布 + 抖动：均匀又不机械。
       const offset = 2 / nodeCount
@@ -45,23 +45,23 @@ onMounted(async () => {
       const y = index * offset - 1 + offset / 2
       const radius = Math.sqrt(Math.max(0, 1 - y * y))
       const theta = increment * index
-      const jitter = 0.28
+      const jitter = 0.55
       positions.push([
-        Math.cos(theta) * radius * 2.5 + (nextRandom() - 0.5) * jitter,
-        y * 2.5 + (nextRandom() - 0.5) * jitter,
-        Math.sin(theta) * radius * 2.5 + (nextRandom() - 0.5) * jitter,
+        Math.cos(theta) * radius * 2.7 + (nextRandom() - 0.5) * jitter,
+        y * 2.7 + (nextRandom() - 0.5) * jitter,
+        Math.sin(theta) * radius * 2.7 + (nextRandom() - 0.5) * jitter,
       ])
     }
 
     const edgeEndpoints: number[] = []
     for (let index = 0; index < nodeCount; index += 1) {
       const [x, y, z] = positions[index]
-      const size = 0.055 + nextRandom() * 0.1
+      const nodeScale = 0.085 + nextRandom() * 0.13
       const color = nodeColors[index % nodeColors.length]
-      const material = new THREE.MeshStandardMaterial({ color, roughness: 0.35, metalness: 0.1, emissive: color, emissiveIntensity: 0.16 })
+      const material = new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.08, emissive: color, emissiveIntensity: 0.22 })
       const mesh = new THREE.Mesh(sphereGeometry, material)
       mesh.position.set(x, y, z)
-      mesh.scale.setScalar(size / 0.075)
+      mesh.scale.setScalar(nodeScale)
       group.add(mesh)
       nodeMeshes.push({ mesh, phase: nextRandom() * Math.PI * 2 })
 
@@ -83,13 +83,16 @@ onMounted(async () => {
     }
     const edgeGeometry = new THREE.BufferGeometry()
     edgeGeometry.setAttribute('position', new THREE.Float32BufferAttribute(edgeEndpoints, 3))
-    const edges = new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: 0x9db8aa, transparent: true, opacity: 0.5 }))
+    const edges = new THREE.LineSegments(edgeGeometry, new THREE.LineBasicMaterial({ color: 0x9fb0a6, transparent: true, opacity: 0.45 }))
     group.add(edges)
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.85))
-    const keyLight = new THREE.DirectionalLight(0xffffff, 1.4)
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9))
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.25)
     keyLight.position.set(4, 5, 6)
     scene.add(keyLight)
+    const rimLight = new THREE.DirectionalLight(0xcfe8dc, 0.55)
+    rimLight.position.set(-5, -2, -4)
+    scene.add(rimLight)
 
     let pointerX = 0
     let pointerY = 0
@@ -160,7 +163,7 @@ onBeforeUnmount(() => cleanup?.())
 <template>
   <div class="network-hero">
     <svg v-show="!active" class="network-hero-fallback" viewBox="0 0 360 220" role="img" aria-label="社会网络示意图：节点代表行动者，连线代表关系，颜色代表社区">
-      <g stroke="#3f6d59" stroke-width="1.5" opacity="0.7">
+      <g stroke="#8fae9f" stroke-width="1.5" opacity="0.7">
         <line x1="64" y1="62" x2="128" y2="38" /><line x1="64" y1="62" x2="118" y2="104" /><line x1="64" y1="62" x2="52" y2="126" />
         <line x1="128" y1="38" x2="186" y2="66" /><line x1="118" y1="104" x2="186" y2="66" /><line x1="118" y1="104" x2="52" y2="126" />
         <line x1="186" y1="66" x2="248" y2="40" /><line x1="186" y1="66" x2="252" y2="112" /><line x1="186" y1="66" x2="150" y2="158" />
@@ -168,46 +171,77 @@ onBeforeUnmount(() => cleanup?.())
         <line x1="308" y1="70" x2="312" y2="158" /><line x1="150" y1="158" x2="92" y2="184" /><line x1="52" y1="126" x2="92" y2="184" />
       </g>
       <g>
-        <circle cx="186" cy="66" r="14" fill="#12a06e" /><circle cx="252" cy="112" r="11" fill="#12a06e" />
-        <circle cx="64" cy="62" r="9" fill="#0e8a5f" /><circle cx="128" cy="38" r="7" fill="#0e8a5f" />
-        <circle cx="118" cy="104" r="7" fill="#27b586" /><circle cx="248" cy="40" r="7" fill="#27b586" />
-        <circle cx="150" cy="158" r="9" fill="#1f9d8a" /><circle cx="92" cy="184" r="7" fill="#1f9d8a" />
-        <circle cx="52" cy="126" r="7" fill="#1f9d8a" /><circle cx="308" cy="70" r="7" fill="#d29a3a" />
-        <circle cx="312" cy="158" r="7" fill="#d29a3a" />
+        <circle cx="186" cy="66" r="14" fill="#0f6b4f" /><circle cx="252" cy="112" r="11" fill="#0f6b4f" />
+        <circle cx="64" cy="62" r="9" fill="#6d5a8e" /><circle cx="128" cy="38" r="7" fill="#6d5a8e" />
+        <circle cx="118" cy="104" r="7" fill="#2f9e8f" /><circle cx="248" cy="40" r="7" fill="#2f9e8f" />
+        <circle cx="150" cy="158" r="9" fill="#0d8a63" /><circle cx="92" cy="184" r="7" fill="#0d8a63" />
+        <circle cx="52" cy="126" r="7" fill="#6d5a8e" /><circle cx="308" cy="70" r="7" fill="#e8930c" />
+        <circle cx="312" cy="158" r="7" fill="#e8930c" />
       </g>
     </svg>
     <div ref="container" class="network-hero-canvas" aria-hidden="true" />
     <span v-if="active" class="network-hero-hint">三维关系网络 · 随视线旋转</span>
+    <span class="network-hero-chip chip-metric" aria-hidden="true">度中心性 <strong>0.92</strong></span>
+    <span class="network-hero-chip chip-community" aria-hidden="true"><i class="dot dot-a" />社区 A<i class="dot dot-b" />社区 B<i class="dot dot-c" />社区 C</span>
   </div>
 </template>
 
 <style scoped>
 .network-hero {
   position: relative;
+  width: 100%;
   min-height: 340px;
   border-radius: var(--radius);
   overflow: hidden;
   border: 1px solid var(--line);
   background:
-    radial-gradient(120% 90% at 80% 10%, rgba(14, 138, 95, 0.20), transparent 60%),
-    radial-gradient(90% 90% at 10% 90%, rgba(109, 90, 142, 0.16), transparent 55%),
-    linear-gradient(160deg, #10231b 0%, #17352a 55%, #123c2c 100%);
+    radial-gradient(110% 90% at 82% 8%, rgba(109, 90, 142, 0.14), transparent 60%),
+    radial-gradient(90% 90% at 8% 92%, rgba(15, 107, 79, 0.12), transparent 58%),
+    linear-gradient(160deg, #ffffff 0%, #f3f7f3 100%);
 }
 .network-hero-fallback { position: absolute; inset: 8% 6%; width: 88%; height: 84%; }
 .network-hero-canvas { position: absolute; inset: 0; }
 .network-hero-canvas :deep(canvas) { display: block; width: 100% !important; height: 100% !important; }
 .network-hero-hint {
   position: absolute;
-  right: 0.9rem;
+  left: 50%;
   bottom: 0.75rem;
+  transform: translateX(-50%);
   padding: 0.2rem 0.65rem;
   border-radius: 999px;
   background: rgba(247, 242, 232, 0.85);
   color: #33433c;
   font-size: 0.68rem;
   letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.network-hero-chip {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.42rem 0.8rem;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #26332d;
+  font-size: 0.72rem;
+  font-weight: 600;
+  box-shadow: 0 12px 30px rgba(35, 42, 51, 0.16);
+  animation: chip-float 5.2s ease-in-out infinite;
+}
+.network-hero-chip strong { color: #0f6b4f; font-size: 0.8rem; }
+.chip-metric { top: 1rem; left: 1rem; }
+.chip-community { bottom: 2.7rem; right: 1rem; animation-delay: -2.4s; }
+.network-hero-chip .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; display: inline-block; }
+.dot-a { background: #0f6b4f; }
+.dot-b { background: #6d5a8e; }
+.dot-c { background: #e8930c; }
+@keyframes chip-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
 }
 @media (prefers-reduced-motion: reduce) {
   .network-hero { min-height: 280px; }
+  .network-hero-chip { animation: none; }
 }
 </style>

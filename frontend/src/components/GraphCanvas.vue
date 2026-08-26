@@ -8,8 +8,8 @@ const props = withDefaults(defineProps<{ graph: GraphInputSpec; overlay?: RunOve
 const container = ref<HTMLDivElement | null>(null)
 let instance: Core | null = null
 
-const palette = ['#0e8a5f', '#b45309', '#0f766e', '#6d5a8e', '#4c8a6b', '#2f7d5c']
-const metricPalette = ['#b45309', '#4c8a6b', '#0f766e', '#6d5a8e', '#0e8a5f']
+const palette = ['#0f6b4f', '#e8930c', '#6d5a8e', '#d95a3a', '#2f9e8f', '#0d8a63']
+const metricPalette = ['#e8930c', '#2f9e8f', '#0f6b4f', '#6d5a8e', '#0d8a63']
 const finite = (value: unknown, fallback = 0) => typeof value === 'number' && Number.isFinite(value) ? value : fallback
 const normalized = (value: unknown) => Math.max(0, Math.min(1, finite(value)))
 const metricColor = (value: unknown) => metricPalette[Math.round(normalized(value) * (metricPalette.length - 1))]
@@ -69,16 +69,16 @@ function renderGraph() {
     elements: elements(),
     style: [
       { selector: 'node', style: {
-        label: 'data(label)', 'font-size': 12, 'font-family': 'sans-serif', color: '#18231e',
-        'background-color': 'data(color)', 'border-width': 2, 'border-color': '#f7f2e8',
+        label: 'data(label)', 'font-size': 12, 'font-family': 'sans-serif', color: '#101a33',
+        'background-color': 'data(color)', 'border-width': 2, 'border-color': '#ffffff',
         width: 'mapData(value, 0, 1, 28, 48)', height: 'mapData(value, 0, 1, 28, 48)',
-        'text-background-color': '#f7f2e8', 'text-background-opacity': 0.86, 'text-background-padding': '3px',
+        'text-background-color': '#ffffff', 'text-background-opacity': 0.86, 'text-background-padding': '3px',
       } },
       { selector: 'edge', style: {
-        width: 'mapData(weight, 0, 5, 1, 5)', 'line-color': '#789087', 'target-arrow-color': '#789087',
+        width: 'mapData(weight, 0, 5, 1, 5)', 'line-color': '#9fb0a6', 'target-arrow-color': '#9fb0a6',
         'target-arrow-shape': props.graph.directed ? 'triangle' : 'none', 'curve-style': 'bezier', opacity: 0.72,
       } },
-      { selector: 'edge[predicted = 1]', style: { 'line-color': '#b34a32', 'target-arrow-color': '#b34a32', 'line-style': 'dashed', width: 4, opacity: 1 } },
+      { selector: 'edge[predicted = 1]', style: { 'line-color': '#d95a3a', 'target-arrow-color': '#d95a3a', 'line-style': 'dashed', width: 4, opacity: 1 } },
     ],
     layout: layoutOptions(),
     minZoom: 0.35,
