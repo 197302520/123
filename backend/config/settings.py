@@ -74,7 +74,11 @@ TIME_ZONE = "Asia/Shanghai"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "/static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+# WhiteNoise serves directly from app finders during local development.  The
+# collected directory exists only in production images, where DEBUG is off;
+# keeping a non-existent STATIC_ROOT in development makes every request emit a
+# misleading warning.
+STATIC_ROOT = None if DEBUG else BASE_DIR / "staticfiles"
 STORAGES = {
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
     "staticfiles": {
