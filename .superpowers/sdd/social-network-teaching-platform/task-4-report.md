@@ -375,3 +375,39 @@ no whitespace errors (only repository LF-to-CRLF notices)
 - Vite retains the existing nonfatal lazy `ResultsPanel` chunk warning (608.76 kB minified / 207.24 kB gzip). Frozen npm installation still warns about dev-only transitive `glob@10.5.0` and `whatwg-encoding`; the resolved tree reports zero vulnerabilities.
 - A Windows-only localhost socket teardown flake in the load-tool cookie contract was removed by exercising the same `HTTPCookieProcessor` through an in-memory HTTP opener transport; this still proves Set-Cookie propagation across submit/result without an irrelevant operating-system socket dependency. Final full backend verification is green.
 - Unrelated `extract_docx.py`, `说明书_提取.txt`, and `.mimosa` remain untouched and will not be staged.
+
+## Isolated-child lifecycle appendix — 2026-08-26
+
+### Contract and implementation
+
+- Every successfully launched algorithm child is finalized from an inner `finally` block before its temporary directory is removed, regardless of monitor/database failure, cancellation, lease loss, missing or malformed output, result-read failure, or terminal-state races.
+- Finalization polls the child, terminates it only while live, always performs a bounded wait/join, and falls back to kill plus a second bounded reap attempt after termination or wait failure.
+- Cleanup failures are logged with sanitized tracebacks and only the run ID, task ID, algorithm ID, and cleanup stage. Cleanup performs no database transition, so it cannot overwrite completed, failed, cancelled, or expired state.
+- Request serialization happens before launch; therefore a request-write failure has no child to reap. A temporary-directory exit failure occurs only after the launched child has already been finalized.
+
+### RED → GREEN evidence
+
+```text
+RED: python -m pytest backend/tests/test_task4_queue_cache.py -q -k "monitor_failure_still or malformed_child_result or cleanup_failure_is_sanitized"
+3 failed, 25 deselected
+
+GREEN: python -m pytest backend/tests/test_task4_queue_cache.py -q
+30 passed, 12 warnings
+
+python -m pytest backend/tests/test_task4_security.py backend/tests/test_task4_queue_cache.py backend/tests/test_task4_link_prediction.py backend/tests/test_task4_deployment.py backend/tests/test_task4_cases_e2e.py -q
+80 passed, 42 warnings in 8.69s
+
+python -m pytest backend/tests -q
+210 passed, 61 warnings in 9.64s
+
+python backend/manage.py check
+System check identified no issues (0 silenced).
+
+python backend/manage.py makemigrations --check --dry-run
+No changes detected
+
+git diff --check
+No whitespace errors; only repository LF-to-CRLF notices.
+```
+
+Frontend files were not touched in this follow-up, so the frontend suite/build were not repeated. Changed scope is limited to `backend/learning/tasks.py`, its Task 4 queue/lifecycle tests, and this report. The unrelated extraction files remain untouched and unstaged.

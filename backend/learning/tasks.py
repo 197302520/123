@@ -144,15 +144,45 @@ def _execute_in_process(run: Run) -> str:
     return _complete_run(str(run.id), computed)
 
 
-def _terminate_child(child: subprocess.Popen) -> None:
-    if child.poll() is not None:
-        return
-    child.terminate()
+def _log_child_cleanup_failure(run: Run, stage: str, exc: Exception) -> None:
+    log_sanitized_exception(
+        logger,
+        "Isolated child cleanup failed run_id=%s task_id=%s algorithm=%s stage=%s",
+        str(run.id), run.task_id or "unassigned", run.algorithm, stage, exc=exc,
+    )
+
+
+def _finalize_child(child: subprocess.Popen, run: Run) -> None:
+    """Stop a live calculation child and always make a bounded attempt to reap it."""
+    try:
+        alive = child.poll() is None
+    except Exception as exc:
+        _log_child_cleanup_failure(run, "poll", exc)
+        alive = True
+
+    if alive:
+        try:
+            child.terminate()
+        except Exception as exc:
+            _log_child_cleanup_failure(run, "terminate", exc)
+
     try:
         child.wait(timeout=float(getattr(settings, "RUN_CHILD_TERMINATE_GRACE_SECONDS", 5)))
     except subprocess.TimeoutExpired:
+        pass
+    except Exception as exc:
+        _log_child_cleanup_failure(run, "wait", exc)
+    else:
+        return
+
+    try:
         child.kill()
+    except Exception as exc:
+        _log_child_cleanup_failure(run, "kill", exc)
+    try:
         child.wait(timeout=2)
+    except Exception as exc:
+        _log_child_cleanup_failure(run, "reap", exc)
 
 
 def _execute_isolated(run: Run) -> str:
@@ -170,31 +200,31 @@ def _execute_isolated(run: Run) -> str:
                 "seed": run.seed,
             }, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
             child = start_algorithm_subprocess(run, request_path, result_path)
-            monitor_seconds = max(0.0, float(getattr(settings, "RUN_MONITOR_SECONDS", 1)))
-            while True:
-                return_code = child.poll()
-                current = _current_status(run_id)
-                if current != Run.Status.RUNNING:
-                    if return_code is None:
-                        _terminate_child(child)
-                    return current
-                if return_code is not None:
-                    break
-                if not renew_run_lease(run_id, run.task_id):
-                    _terminate_child(child)
+            try:
+                monitor_seconds = max(0.0, float(getattr(settings, "RUN_MONITOR_SECONDS", 1)))
+                while True:
+                    return_code = child.poll()
+                    current = _current_status(run_id)
+                    if current != Run.Status.RUNNING:
+                        return current
+                    if return_code is not None:
+                        break
+                    if not renew_run_lease(run_id, run.task_id):
+                        return _current_status(run_id)
+                    time.sleep(monitor_seconds)
+                if _current_status(run_id) != Run.Status.RUNNING:
                     return _current_status(run_id)
-                time.sleep(monitor_seconds)
-            if _current_status(run_id) != Run.Status.RUNNING:
-                return _current_status(run_id)
-            if not result_path.is_file():
-                raise RuntimeError("isolated algorithm process produced no result envelope")
-            envelope = json.loads(result_path.read_text(encoding="utf-8"))
-            if envelope.get("ok") is True and isinstance(envelope.get("result"), dict):
-                return _complete_run(run_id, envelope["result"])
-            terminal_error = envelope.get("error")
-            if not isinstance(terminal_error, dict):
-                raise RuntimeError("isolated algorithm process produced an invalid result envelope")
-            return _fail_run(run_id, terminal_error)
+                if not result_path.is_file():
+                    raise RuntimeError("isolated algorithm process produced no result envelope")
+                envelope = json.loads(result_path.read_text(encoding="utf-8"))
+                if envelope.get("ok") is True and isinstance(envelope.get("result"), dict):
+                    return _complete_run(run_id, envelope["result"])
+                terminal_error = envelope.get("error")
+                if not isinstance(terminal_error, dict):
+                    raise RuntimeError("isolated algorithm process produced an invalid result envelope")
+                return _fail_run(run_id, terminal_error)
+            finally:
+                _finalize_child(child, run)
     except Exception as exc:
         log_sanitized_exception(
             logger,

@@ -596,3 +596,218 @@ def test_isolated_child_environment_is_a_runtime_allowlist_not_a_secret_denylist
     assert child_environment["OMP_NUM_THREADS"] == "2"
     assert "EXTERNAL_API_KEY" not in child_environment
     assert "UNFAMILIAR_CREDENTIAL" not in child_environment
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, RUN_MONITOR_SECONDS=0)
+def test_monitor_failure_still_terminates_and_reaps_the_isolated_child(monkeypatch):
+    """Removing unconditional cleanup would leave the live calculation child orphaned."""
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="monitor-failure-child",
+    )
+
+    class Child:
+        alive = True
+        reaped = False
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.alive = False
+            self.returncode = -15
+
+        def wait(self, timeout=None):
+            self.reaped = True
+            return self.returncode
+
+        def kill(self):
+            self.alive = False
+            self.returncode = -9
+
+    child = Child()
+    monkeypatch.setattr(tasks, "start_algorithm_subprocess", lambda *_args: child)
+    monkeypatch.setattr(tasks, "_current_status", lambda *_args: (_ for _ in ()).throw(RuntimeError("db down")))
+
+    assert tasks.execute_run_job(str(run.id)) == Run.Status.FAILED
+    assert child.alive is False
+    assert child.reaped is True
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, RUN_MONITOR_SECONDS=0)
+def test_malformed_child_result_reaps_an_already_exited_process(monkeypatch):
+    """A child that exits before envelope validation must still be explicitly joined."""
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="malformed-envelope-child",
+    )
+
+    class Child:
+        returncode = 0
+        reaped = False
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            raise AssertionError("an exited child must not be terminated")
+
+        def wait(self, timeout=None):
+            self.reaped = True
+            return self.returncode
+
+        def kill(self):
+            raise AssertionError("an exited child must not be killed")
+
+    child = Child()
+
+    def start_child(_run, _request_path, result_path):
+        result_path.write_text('{"ok":true,"result":[]}', encoding="utf-8")
+        return child
+
+    monkeypatch.setattr(tasks, "start_algorithm_subprocess", start_child)
+
+    assert tasks.execute_run_job(str(run.id)) == Run.Status.FAILED
+    assert child.reaped is True
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, RUN_MONITOR_SECONDS=0)
+def test_cleanup_failure_is_sanitized_and_falls_back_to_kill_and_reap(monkeypatch, caplog):
+    """A terminate exception must neither leak its content nor prevent final kill/join cleanup."""
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="terminate-failure-child",
+    )
+
+    class Child:
+        alive = True
+        killed = False
+        reaped = False
+        returncode = None
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            raise RuntimeError("GRAPH-CONTENT-SECRET")
+
+        def wait(self, timeout=None):
+            if self.alive:
+                raise tasks.subprocess.TimeoutExpired("isolated-child", timeout)
+            self.reaped = True
+            return self.returncode
+
+        def kill(self):
+            self.killed = True
+            self.alive = False
+            self.returncode = -9
+
+    child = Child()
+    monkeypatch.setattr(tasks, "start_algorithm_subprocess", lambda *_args: child)
+    monkeypatch.setattr(tasks, "_current_status", lambda *_args: (_ for _ in ()).throw(RuntimeError("db down")))
+
+    with caplog.at_level("ERROR"):
+        assert tasks.execute_run_job(str(run.id)) == Run.Status.FAILED
+
+    assert child.killed is True and child.reaped is True and child.alive is False
+    assert "Isolated child cleanup failed" in caplog.text
+    assert "terminate-failure-child" in caplog.text
+    assert "GRAPH-CONTENT-SECRET" not in caplog.text
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, RUN_MONITOR_SECONDS=0)
+def test_result_read_failure_reaps_the_exited_child(monkeypatch):
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="result-read-failure-child",
+    )
+
+    class Child:
+        returncode = 0
+        reaped = False
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            raise AssertionError("an exited child must not be terminated")
+
+        def wait(self, timeout=None):
+            self.reaped = True
+            return self.returncode
+
+        def kill(self):
+            raise AssertionError("an exited child must not be killed")
+
+    child = Child()
+
+    def start_child(_run, _request_path, result_path):
+        result_path.write_text('{"ok":true,"result":{"tables":[]}}', encoding="utf-8")
+        return child
+
+    monkeypatch.setattr(tasks, "start_algorithm_subprocess", start_child)
+    monkeypatch.setattr(tasks.Path, "read_text", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("read failed")))
+
+    assert tasks.execute_run_job(str(run.id)) == Run.Status.FAILED
+    assert child.reaped is True
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, RUN_MONITOR_SECONDS=0)
+def test_tempdir_cleanup_failure_happens_after_child_reap_and_does_not_overwrite_completion(
+    monkeypatch, tmp_path,
+):
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="tempdir-failure-child",
+    )
+
+    class ExplodingTemporaryDirectory:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return str(tmp_path)
+
+        def __exit__(self, *_args):
+            raise OSError("tempdir cleanup failed")
+
+    class Child:
+        returncode = 0
+        reaped = False
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            raise AssertionError("an exited child must not be terminated")
+
+        def wait(self, timeout=None):
+            self.reaped = True
+            return self.returncode
+
+        def kill(self):
+            raise AssertionError("an exited child must not be killed")
+
+    child = Child()
+
+    def start_child(_run, _request_path, result_path):
+        result_path.write_text(
+            '{"ok":true,"result":{"tables":[{"key":"completed-before-cleanup"}]}}',
+            encoding="utf-8",
+        )
+        return child
+
+    monkeypatch.setattr(tasks.tempfile, "TemporaryDirectory", ExplodingTemporaryDirectory)
+    monkeypatch.setattr(tasks, "start_algorithm_subprocess", start_child)
+
+    assert tasks.execute_run_job(str(run.id)) == Run.Status.COMPLETED
+    run.refresh_from_db()
+    assert child.reaped is True
+    assert run.status == Run.Status.COMPLETED
+    assert run.result["tables"][0]["key"] == "completed-before-cleanup"
