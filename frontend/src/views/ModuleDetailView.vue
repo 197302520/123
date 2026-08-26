@@ -33,8 +33,8 @@ watch(() => props.slug, load, { immediate: true })
         <h1>{{ module.title }}</h1><p class="lead">{{ editorial?.question }}</p><p>{{ module.summary }}</p>
       </header>
       <div class="module-reading-grid">
-        <section aria-labelledby="learn-heading"><h2 id="learn-heading">本模块如何推进</h2><p>{{ module.content || '从一个可观察的关系现象开始，学习选择合适的网络表示与算法，并用方法限制约束结论。' }}</p><p>核心方法：<strong>{{ editorial?.methods }}</strong></p></section>
-        <aside><p class="eyebrow">LEARNING CHECK</p><h2>完成后，你应能</h2><ul><li>把案例问题转换为图结构问题</li><li>说明所选方法的关键假设</li><li>从结果、警告和反例共同组织解释</li></ul></aside>
+        <section aria-labelledby="learn-heading"><h2 id="learn-heading">本模块如何推进</h2><p>{{ module.content || editorial?.lead || '从一个可观察的关系现象开始，学习选择合适的网络表示与算法，并用方法限制约束结论。' }}</p><p>核心方法：<strong>{{ editorial?.methods }}</strong></p></section>
+        <aside><p class="eyebrow">LEARNING CHECK</p><h2>完成后，你应能</h2><ul><li v-for="(check, index) in editorial?.checks ?? ['把案例问题转换为图结构问题', '说明所选方法的关键假设', '从结果、警告和反例共同组织解释']" :key="index">{{ check }}</li></ul></aside>
       </div>
       <section class="module-cases" aria-labelledby="module-cases-title"><h2 id="module-cases-title">从案例继续</h2>
         <p v-if="!cases.length" class="state-message">本模块的公开案例正在整理，可先进入自由实验室练习。</p>

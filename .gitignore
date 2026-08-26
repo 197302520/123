@@ -19,3 +19,6 @@ staticfiles/
 # 本地一次性工具与说明书提取文本，不属于项目代码
 extract_docx.py
 说明书_提取.txt
+
+# 其他 AI 工具的本地会话数据
+.workbuddy/

@@ -18,59 +18,116 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="home-view">
-    <section class="hero section-shell" aria-labelledby="hero-title">
+  <div class="home-view section-shell">
+    <!-- 平台是什么 + 行动入口 -->
+    <section class="hero" aria-labelledby="hero-title">
       <div class="hero-copy">
-        <p class="eyebrow">CASE-ORIENTED SOCIAL NETWORK ANALYSIS</p>
-        <h1 id="hero-title">关系不是背景，<br><em>关系就是证据。</em></h1>
-        <p class="hero-intro">从真实问题出发，把关系画成网络、交给算法，再把结果带回社会情境。这里没有登录门槛，也没有脱离证据的答案。</p>
+        <p class="eyebrow">《社会网络分析》课程 · 智能教学平台</p>
+        <h1 id="hero-title">把关系数据交给算法，<br><em>得到可信的<wbr>网络分析结论</em></h1>
+        <p class="hero-intro">
+          这是一套覆盖社会网络分析全流程的教学平台：从中文文本中抽取关系建网，
+          或直接导入你自己的网络数据，一键运行 41 种算法——中心性、社区发现、链路预测、
+          网络韧性、观点演化仿真——并生成图表与分析报告，适合课程作业、课堂实验与课程设计。
+        </p>
         <div class="hero-actions">
-          <RouterLink class="button primary" to="/cases">从案例开始</RouterLink>
-          <RouterLink class="text-link" to="/lab">打开自由实验室 →</RouterLink>
+          <RouterLink class="button primary" to="/lab">进入实验室，开始分析</RouterLink>
+          <RouterLink class="button secondary" to="/cases">先浏览教学案例</RouterLink>
         </div>
       </div>
-      <div class="hero-figure" aria-label="从情境到证据的学习路径">
-        <div class="orbit orbit-a"><span>问题</span></div>
-        <div class="orbit orbit-b"><span>网络</span></div>
-        <div class="orbit orbit-c"><span>方法</span></div>
-        <div class="orbit orbit-d"><span>证据</span></div>
-        <p>观察不是终点<br><strong>解释才是</strong></p>
+      <div class="hero-panel">
+        <svg class="hero-network" viewBox="0 0 360 220" role="img" aria-label="社会网络示意图：节点代表行动者，连线代表关系，颜色代表社区">
+          <g stroke="#cfe0d6" stroke-width="1.5">
+            <line x1="64" y1="62" x2="128" y2="38" /><line x1="64" y1="62" x2="118" y2="104" /><line x1="64" y1="62" x2="52" y2="126" />
+            <line x1="128" y1="38" x2="186" y2="66" /><line x1="118" y1="104" x2="186" y2="66" /><line x1="118" y1="104" x2="52" y2="126" />
+            <line x1="186" y1="66" x2="248" y2="40" /><line x1="186" y1="66" x2="252" y2="112" /><line x1="186" y1="66" x2="150" y2="158" />
+            <line x1="252" y1="112" x2="150" y2="158" /><line x1="252" y1="112" x2="308" y2="70" /><line x1="252" y1="112" x2="312" y2="158" />
+            <line x1="308" y1="70" x2="312" y2="158" /><line x1="150" y1="158" x2="92" y2="184" /><line x1="52" y1="126" x2="92" y2="184" />
+          </g>
+          <g>
+            <circle cx="186" cy="66" r="14" fill="#0e8a5f" /><circle cx="252" cy="112" r="11" fill="#0e8a5f" />
+            <circle cx="64" cy="62" r="9" fill="#0b6e4b" /><circle cx="128" cy="38" r="7" fill="#0b6e4b" />
+            <circle cx="118" cy="104" r="7" fill="#12a06e" /><circle cx="248" cy="40" r="7" fill="#12a06e" />
+            <circle cx="150" cy="158" r="9" fill="#0f766e" /><circle cx="92" cy="184" r="7" fill="#0f766e" />
+            <circle cx="52" cy="126" r="7" fill="#0f766e" /><circle cx="308" cy="70" r="7" fill="#b45309" />
+            <circle cx="312" cy="158" r="7" fill="#b45309" />
+          </g>
+        </svg>
+        <div class="hero-stats">
+          <div class="stat-card"><strong>41</strong><span>种分析算法</span></div>
+          <div class="stat-card"><strong>7</strong><span>个课程模块</span></div>
+          <div class="stat-card"><strong>7</strong><span>个教学案例</span></div>
+          <div class="stat-card"><strong>6</strong><span>步案例研习</span></div>
+        </div>
       </div>
     </section>
 
-    <section class="manifesto" aria-label="学习原则">
-      <p>01 / 用案例提出问题</p><p>02 / 用算法检验证据</p><p>03 / 用限制约束解释</p>
+    <!-- 怎么用：三步 -->
+    <section aria-labelledby="steps-title">
+      <div class="home-heading">
+        <p class="eyebrow">HOW TO USE</p>
+        <h2 id="steps-title">三步完成一次网络分析</h2>
+        <p>数据、算法、结果三段式推进，分析报告一键导出。</p>
+      </div>
+      <div class="steps-strip">
+        <div class="step-card">
+          <span class="step-no" aria-hidden="true">1</span>
+          <h2>准备网络数据</h2>
+          <p>从案例库选一个案例（如空手道俱乐部网络），或在实验室粘贴"起点 终点 权重"边表、上传 TXT / CSV / Excel / GraphML 文件。</p>
+        </div>
+        <div class="step-card">
+          <span class="step-no" aria-hidden="true">2</span>
+          <h2>选择算法并运行</h2>
+          <p>41 种算法任选：中心性、最短路径、社区发现、链路预测、韧性攻击、观点仿真。参数可调，运行真实计算而非演示动画。</p>
+        </div>
+        <div class="step-card">
+          <span class="step-no" aria-hidden="true">3</span>
+          <h2>解读结果并导出</h2>
+          <p>查看指标表格、可视化图表与网络叠加图，将结果与案例情境对照解释，一键下载 HTML 报告与 ZIP 复现包。</p>
+        </div>
+      </div>
     </section>
 
     <p v-if="error" class="state-message error" role="alert">{{ error }}</p>
-    <section class="section-shell home-modules" aria-labelledby="modules-title">
-      <div class="section-heading"><p class="eyebrow">SEVEN LENSES</p><h2 id="modules-title">七个模块，七种观察关系的方式</h2><RouterLink to="/courses">查看完整课程 →</RouterLink></div>
-      <p v-if="loading" class="state-message" role="status">正在装订课程目录…</p>
+
+    <!-- 七个课程模块 -->
+    <section class="home-modules" aria-labelledby="modules-title">
+      <div class="home-heading">
+        <p class="eyebrow">COURSE MODULES</p>
+        <h2 id="modules-title">七个模块，覆盖课程全部知识点</h2>
+        <p>每个模块配有公式讲解与配套案例，点击进入学习。</p>
+      </div>
+      <p v-if="loading" class="state-message" role="status">正在加载课程目录…</p>
       <p v-else-if="!modules.length && !error" class="state-message empty">课程目录暂未发布，可先进入自由实验室练习。</p>
-      <ol v-else class="module-ribbon">
+      <ol v-else class="module-grid">
         <li v-for="module in modules" :key="module.slug">
-          <RouterLink :to="`/courses/${module.slug}`">
-            <span>模块{{ moduleEditorial(module.slug)?.numeral }}</span>
+          <RouterLink class="module-card" :to="`/courses/${module.slug}`">
+            <span class="module-no">模块{{ moduleEditorial(module.slug)?.numeral }}</span>
             <strong>{{ moduleEditorial(module.slug)?.accent ?? module.title }}</strong>
             <small>{{ moduleEditorial(module.slug)?.question ?? module.summary }}</small>
           </RouterLink>
         </li>
       </ol>
+      <RouterLink class="button secondary home-more" to="/courses">查看完整课程</RouterLink>
     </section>
 
-    <section class="section-shell featured-cases" aria-labelledby="cases-title">
-      <div class="section-index">CASE<br>NOTES</div>
-      <div>
-        <p class="eyebrow">READ THE NETWORK</p>
-        <h2 id="cases-title">案例不是算法的包装，<br>而是解释的边界。</h2>
-        <div class="case-lines">
-          <RouterLink v-for="(item, index) in cases.slice(0, 3)" :key="item.slug" :to="`/cases/${item.slug}`">
-            <span>0{{ index + 1 }}</span><strong>{{ item.title }}</strong><small>{{ item.summary }}</small>
-          </RouterLink>
-          <p v-if="loading" class="state-message" role="status">正在整理案例索引…</p>
-          <p v-else-if="!cases.length && !error" class="state-message empty">案例索引暂未发布，可从课程模块了解分析方法。</p>
-        </div>
+    <!-- 推荐案例 -->
+    <section class="home-cases" aria-labelledby="cases-title">
+      <div class="home-heading">
+        <p class="eyebrow">FEATURED CASES</p>
+        <h2 id="cases-title">从经典案例开始上手</h2>
+        <p>每个案例按六步研习组织，可一键把案例数据载入实验室复现分析。</p>
       </div>
+      <p v-if="loading" class="state-message" role="status">正在整理案例索引…</p>
+      <p v-else-if="!cases.length && !error" class="state-message empty">案例索引暂未发布，可从课程模块了解分析方法。</p>
+      <div v-else class="case-cards">
+        <RouterLink v-for="item in cases.slice(0, 3)" :key="item.slug" class="case-card" :to="`/cases/${item.slug}`">
+          <span>案例</span>
+          <strong>{{ item.title }}</strong>
+          <small>{{ item.summary }}</small>
+          <i>进入案例研习 →</i>
+        </RouterLink>
+      </div>
+      <RouterLink class="button secondary home-more" to="/cases">浏览全部案例</RouterLink>
     </section>
   </div>
 </template>

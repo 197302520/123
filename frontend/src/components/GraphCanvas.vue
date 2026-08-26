@@ -8,8 +8,8 @@ const props = defineProps<{ graph: GraphInputSpec; overlay?: RunOverlay | null; 
 const container = ref<HTMLDivElement | null>(null)
 let instance: Core | null = null
 
-const palette = ['#b34a32', '#2d6f68', '#d39a32', '#5e6d45', '#7b537d', '#28758d']
-const metricPalette = ['#d39a32', '#5e8d82', '#28758d', '#7b537d', '#b34a32']
+const palette = ['#0e8a5f', '#b45309', '#0f766e', '#6d5a8e', '#4c8a6b', '#2f7d5c']
+const metricPalette = ['#b45309', '#4c8a6b', '#0f766e', '#6d5a8e', '#0e8a5f']
 const finite = (value: unknown, fallback = 0) => typeof value === 'number' && Number.isFinite(value) ? value : fallback
 const normalized = (value: unknown) => Math.max(0, Math.min(1, finite(value)))
 const metricColor = (value: unknown) => metricPalette[Math.round(normalized(value) * (metricPalette.length - 1))]

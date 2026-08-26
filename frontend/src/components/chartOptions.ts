@@ -10,9 +10,9 @@ const escapeHtml = (value: unknown) => String(value).replace(/[&<>"']/g, (charac
 function base(animation: boolean) {
   return {
     animation,
-    color: ['#a94732', '#296a63', '#d69a2d', '#675279'],
+    color: ['#0e8a5f', '#0f766e', '#b45309', '#6d5a8e'],
     tooltip: { trigger: 'axis' },
-    legend: { bottom: 0, textStyle: { color: '#33463e' } },
+    legend: { bottom: 0, textStyle: { color: '#33433c' } },
     grid: { left: 52, right: 24, top: 28, bottom: 54 },
   }
 }
@@ -99,8 +99,8 @@ function standard(chart: RunChart, animation: boolean) {
   }))
   return {
     ...base(animation),
-    xAxis: { type: type === 'scatter' ? 'value' : 'category', data: type === 'scatter' ? undefined : categories, axisLabel: { color: '#4f5e57' } },
-    yAxis: { type: 'value', axisLabel: { color: '#4f5e57' }, splitLine: { lineStyle: { color: '#ddd6c8' } } },
+    xAxis: { type: type === 'scatter' ? 'value' : 'category', data: type === 'scatter' ? undefined : categories, axisLabel: { color: '#6b6459' } },
+    yAxis: { type: 'value', axisLabel: { color: '#6b6459' }, splitLine: { lineStyle: { color: '#e3ded2' } } },
     series,
   }
 }

@@ -11,7 +11,7 @@ function confirmClear() { if (window.confirm('确定清空这台设备上的全�
 <template>
   <aside class="history-panel" aria-labelledby="history-heading">
     <div class="control-heading"><div><p class="eyebrow">LOCAL ARCHIVE</p><h2 id="history-heading">本机实验历史</h2></div><button v-if="records.length" type="button" class="text-button danger" @click="confirmClear">清空历史</button></div>
-    <p class="privacy-note">仅存于此浏览器，不关联姓名或账号。后端临时运行数据最多保留两小时。</p>
+    <p class="privacy-note">实验记录仅保存在本机，不关联姓名或账号。后端临时数据最多保留两小时。</p>
     <p v-if="error" class="state-message error compact" role="alert" aria-label="本机历史错误">{{ error }}</p>
     <p v-if="loading" class="state-message compact" role="status">正在读取本机记录…</p>
     <p v-else-if="!error && !records.length" class="state-message compact empty">还没有实验记录。完成一次真实运行后，它会出现在这里。</p>
