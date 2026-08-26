@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import csv
 import io
 import json
@@ -10,7 +11,8 @@ from .errors import AlgorithmInputError
 from .graph import normalize_graph
 
 
-FORMATS = {"json", "csv", "graphml", "gexf", "gml", "pajek", "edgelist", "adjacency"}
+FORMATS = {"json", "csv", "xlsx", "graphml", "gexf", "gml", "pajek", "edgelist", "adjacency"}
+XLSX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 GRAPHML_SCHEMA_MARKER = "sna_graphspec_v1"
 GRAPHML_ATTRIBUTES_KEY = "sna_attributes_json"
 
@@ -106,6 +108,33 @@ def _pajek(graph: dict[str, Any]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _xlsx_bytes(graph: dict[str, Any]) -> bytes:
+    """Native Excel workbook: node list, weighted adjacency matrix, and the edge table."""
+    from openpyxl import Workbook
+
+    nodes = [node["id"] for node in graph["nodes"]]
+    weights = {(edge["source"], edge["target"]): edge["weight"] for edge in graph["edges"]}
+    if not graph["directed"]:
+        weights.update({(target, source): value for (source, target), value in list(weights.items())})
+    workbook = Workbook()
+    node_sheet = workbook.active
+    node_sheet.title = "节点编号清单"
+    node_sheet.append(["编号", "标签"])
+    for node in graph["nodes"]:
+        node_sheet.append([node["id"], node["label"]])
+    matrix_sheet = workbook.create_sheet("邻接矩阵")
+    matrix_sheet.append(["node", *nodes])
+    for source in nodes:
+        matrix_sheet.append([source, *[weights.get((source, target), 0.0) for target in nodes]])
+    edge_sheet = workbook.create_sheet("边列表")
+    edge_sheet.append(["source", "target", "weight"])
+    for edge in graph["edges"]:
+        edge_sheet.append([edge["source"], edge["target"], edge["weight"]])
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
 def export_graph(graph: dict[str, Any], format_name: str) -> dict[str, str]:
     normalized = _sorted_graph(normalize_graph(graph))
     format_name = format_name.lower()
@@ -115,19 +144,24 @@ def export_graph(graph: dict[str, Any], format_name: str) -> dict[str, str]:
         content = json.dumps(normalized, ensure_ascii=False, sort_keys=True, indent=2)
         mime_type = "application/json"
         extension = "json"
+        encoding = "text"
     elif format_name == "csv":
-        content, mime_type, extension = _csv_edges(normalized), "text/csv", "csv"
+        content, mime_type, extension, encoding = _csv_edges(normalized), "text/csv", "csv", "text"
     elif format_name == "adjacency":
-        content, mime_type, extension = _adjacency(normalized), "text/csv", "adjacency.csv"
+        content, mime_type, extension, encoding = _adjacency(normalized), "text/csv", "adjacency.csv", "text"
+    elif format_name == "xlsx":
+        content, mime_type, extension, encoding = (
+            base64.b64encode(_xlsx_bytes(normalized)).decode("ascii"), XLSX_MIME_TYPE, "xlsx", "base64",
+        )
     elif format_name == "graphml":
-        content, mime_type, extension = _graphml(normalized), "application/graphml+xml", "graphml"
+        content, mime_type, extension, encoding = _graphml(normalized), "application/graphml+xml", "graphml", "text"
     elif format_name == "gexf":
-        content, mime_type, extension = _gexf(normalized), "application/gexf+xml", "gexf"
+        content, mime_type, extension, encoding = _gexf(normalized), "application/gexf+xml", "gexf", "text"
     elif format_name == "gml":
-        content, mime_type, extension = _gml(normalized), "text/plain", "gml"
+        content, mime_type, extension, encoding = _gml(normalized), "text/plain", "gml", "text"
     elif format_name == "pajek":
-        content, mime_type, extension = _pajek(normalized), "text/plain", "net"
+        content, mime_type, extension, encoding = _pajek(normalized), "text/plain", "net", "text"
     else:
         content = "\n".join(f"{edge['source']} {edge['target']} {format(edge['weight'], '.17g')}" for edge in normalized["edges"]) + ("\n" if normalized["edges"] else "")
-        mime_type, extension = "text/plain", "edgelist"
-    return {"format": format_name, "mime_type": mime_type, "filename": f"network.{extension}", "content": content}
+        mime_type, extension, encoding = "text/plain", "edgelist", "text"
+    return {"format": format_name, "mime_type": mime_type, "filename": f"network.{extension}", "encoding": encoding, "content": content}

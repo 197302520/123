@@ -60,3 +60,37 @@ export const CASE_SECTIONS: CaseSection[] = [
 ]
 
 export const moduleEditorial = (slug: string) => MODULE_EDITORIAL.find((item) => item.slug === slug)
+
+/** 模块固定顺序与简称：算法分组下拉、模块页算法清单共用同一顺序（与后端 ALGORITHM_MODULE 对应）。 */
+export const MODULE_SHORT_TITLES: Record<string, string> = {
+  'network-basics': '网络基础',
+  'network-measures': '网络测量',
+  'communities': '社区发现',
+  'diffusion': '扩散与传播',
+  'robustness': '网络韧性',
+  'link-prediction': '链路预测',
+  'dynamic-networks': '动态网络',
+}
+
+export const MODULE_ORDER = MODULE_EDITORIAL.map((item) => item.slug)
+
+/** 按课程模块给算法分组，保持模块顺序；未标注模块的算法落入「其他方法」。 */
+export function groupAlgorithmsByModule<T extends { module?: string }>(algorithms: T[]): Array<{ slug: string; label: string; items: T[] }> {
+  const buckets = new Map<string, T[]>()
+  for (const algorithm of algorithms) {
+    const slug = algorithm.module && MODULE_SHORT_TITLES[algorithm.module] ? algorithm.module : 'other'
+    const bucket = buckets.get(slug) ?? []
+    bucket.push(algorithm)
+    buckets.set(slug, bucket)
+  }
+  const groups = MODULE_ORDER
+    .filter((slug) => buckets.has(slug))
+    .map((slug) => ({
+      slug,
+      label: `模块${moduleEditorial(slug)?.numeral ?? ''} · ${MODULE_SHORT_TITLES[slug]}`,
+      items: buckets.get(slug)!,
+    }))
+  const others = buckets.get('other')
+  if (others?.length) groups.push({ slug: 'other', label: '其他方法', items: others })
+  return groups
+}

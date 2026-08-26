@@ -52,6 +52,7 @@ class AlgorithmSpec(TypedDict):
     explanation: str
     advantages: list[str]
     limitations: list[str]
+    module: str
 
 
 class RunRequest(TypedDict):

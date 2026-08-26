@@ -1,16 +1,45 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { GraphInputSpec, HistoryRecord, RunOverlay, RunResult } from '../api/contracts'
 import GraphCanvas from './GraphCanvas.vue'
 import ResultChart from './ResultChart.vue'
 
 const props = defineProps<{ result: RunResult; currentRecord?: HistoryRecord | null; compareRecord?: HistoryRecord | null }>()
 
+// 说明书 3.2：结果网络叠加层同样支持三类布局切换。
+type LayoutName = 'force' | 'circular' | 'tree'
+const layoutName = ref<LayoutName>('force')
+const layoutOptions: Array<{ value: LayoutName; label: string }> = [
+  { value: 'force', label: 'FR 力导向布局' },
+  { value: 'circular', label: 'Circular 环形布局' },
+  { value: 'tree', label: '分层树形布局' },
+]
+
 function display(value: unknown): string {
   if (value === null || value === undefined) return '—'
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(6).replace(/0+$/, '').replace(/\.$/, '')
   if (typeof value === 'object') return JSON.stringify(value, null, 0)
   return String(value)
+}
+
+function downloadExport(row: Record<string, unknown>) {
+  const filename = String(row.filename ?? 'network-export')
+  const mimeType = String(row.mime_type ?? 'application/octet-stream')
+  const encoding = String(row.encoding ?? 'text')
+  const content = String(row.content ?? '')
+  let blob: Blob
+  if (encoding === 'base64') {
+    const bytes = Uint8Array.from(atob(content), (character) => character.charCodeAt(0))
+    blob = new Blob([bytes], { type: mimeType })
+  } else {
+    blob = new Blob([content], { type: `${mimeType};charset=utf-8` })
+  }
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => Boolean(value && typeof value === 'object' && !Array.isArray(value))
@@ -98,9 +127,19 @@ const tableComparisons = computed(() => {
     <div v-if="result.warnings.length" class="result-warnings" role="alert"><strong>解释前请注意</strong><ul><li v-for="warning in result.warnings" :key="warning">{{ warning }}</li></ul></div>
     <p v-if="!hasArtifacts(result)" class="state-message empty">本次算法没有返回表格、图表或网络叠加层。</p>
 
-    <div v-if="result.tables.length" class="result-section"><h3>数据表</h3><div class="table-scroll" v-for="table in result.tables" :key="table.key"><table :aria-label="table.name"><caption>{{ table.name }}</caption><thead><tr><th v-for="column in table.columns" :key="column" scope="col">{{ column }}</th></tr></thead><tbody><tr v-for="(row, index) in table.rows" :key="index"><td v-for="column in table.columns" :key="column">{{ display(row[column]) }}</td></tr></tbody></table></div></div>
+    <div v-if="result.tables.length" class="result-section"><h3>数据表</h3>
+      <template v-for="table in result.tables" :key="table.key">
+        <div v-if="table.key === 'export'" class="export-cards">
+          <div v-for="(row, index) in table.rows" :key="index" class="export-card">
+            <div class="export-meta"><strong>{{ row.filename }}</strong><span>{{ row.format }} · {{ row.mime_type }} · {{ row.encoding === 'base64' ? '二进制文件' : '文本文件' }}</span></div>
+            <button type="button" class="button secondary" @click="downloadExport(row)">下载 {{ row.filename }}</button>
+          </div>
+        </div>
+        <div v-else class="table-scroll"><table :aria-label="table.name"><caption>{{ table.name }}</caption><thead><tr><th v-for="column in table.columns" :key="column" scope="col">{{ column }}</th></tr></thead><tbody><tr v-for="(row, index) in table.rows" :key="index"><td v-for="column in table.columns" :key="column">{{ display(row[column]) }}</td></tr></tbody></table></div>
+      </template>
+    </div>
     <div v-if="result.charts.length" class="result-section"><h3>图表</h3><div class="chart-grid"><figure v-for="chart in result.charts" :key="chart.key"><ResultChart :chart="chart" /><figcaption>{{ chart.key }} · {{ chart.type }}</figcaption></figure></div></div>
-    <div v-if="result.overlays.length" class="result-section"><h3>网络叠加层</h3><div class="overlay-grid"><figure v-for="overlay in result.overlays" :key="overlay.key"><GraphCanvas :graph="overlayGraph(overlay)" :overlay="overlay" label="结果网络叠加图" /><figcaption>{{ overlayCaption(overlay) }}</figcaption></figure></div></div>
+    <div v-if="result.overlays.length" class="result-section"><h3>网络叠加层</h3><label class="layout-select">可视化布局<select v-model="layoutName" aria-label="选择可视化布局"><option v-for="option in layoutOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label><div class="overlay-grid"><figure v-for="overlay in result.overlays" :key="overlay.key"><GraphCanvas :graph="overlayGraph(overlay)" :overlay="overlay" :layout="layoutName" label="结果网络叠加图" /><figcaption>{{ overlayCaption(overlay) }}</figcaption></figure></div></div>
 
     <section v-if="comparable" class="compare-region" role="region" aria-label="实验结果对比">
       <h3>并排核对</h3><p>对比不是“找赢家”，而是检查结论对方法与参数是否稳定。</p>

@@ -11,6 +11,7 @@ import { LEARNING_EXAMPLE_GRAPH } from '../lab/exampleGraph'
 import { clearHistory, deleteHistory, listHistory, saveHistory } from '../lab/historyStore'
 import { defaultsFor } from '../lab/parameters'
 import { executeRun, resumeRun, type RunPhase } from '../lab/runMachine'
+import { groupAlgorithmsByModule } from '../content/catalog'
 
 const ResultsPanel = defineAsyncComponent({
   loader: () => import('../components/ResultsPanel.vue'),
@@ -50,6 +51,7 @@ const activeRunContext = ref<{ algorithm: AlgorithmSpec; request: RunRequest } |
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
 const selectedAlgorithm = computed(() => algorithms.value.find((item) => item.key === selectedKey.value) ?? null)
+const groupedAlgorithms = computed(() => groupAlgorithmsByModule(algorithms.value))
 const graphType = computed(() => graph.value.directed ? 'directed' : 'undirected')
 const incompatible = computed(() => selectedAlgorithm.value ? !selectedAlgorithm.value.supported_graph_types.includes(graphType.value) : false)
 const running = computed(() => phase.value === 'submitting' || phase.value === 'polling')
@@ -65,7 +67,9 @@ onMounted(async () => {
   })()
   try {
     algorithms.value = await fetchAlgorithms()
-    selectedKey.value = algorithms.value.find((item) => item.key === 'centrality.degree')?.key ?? algorithms.value[0]?.key ?? ''
+    const requestedAlgorithm = new URLSearchParams(window.location.search).get('algorithm')
+    const fallbackKey = algorithms.value.find((item) => item.key === 'centrality.degree')?.key ?? algorithms.value[0]?.key ?? ''
+    selectedKey.value = algorithms.value.some((item) => item.key === requestedAlgorithm) ? requestedAlgorithm! : fallbackKey
   } catch (reason) { registryError.value = reason instanceof Error ? reason.message : '无法加载算法注册表。' }
   finally { registryLoading.value = false }
   const requestedCase = new URLSearchParams(window.location.search).get('case')
@@ -277,7 +281,7 @@ const categoryName = (key: string) => ({ graph: '图结构', model: '随机模�
           <p v-if="registryLoading" class="state-message compact" role="status">正在读取后端算法注册表…</p>
           <p v-else-if="registryError" class="state-message error" role="alert">{{ registryError }}</p>
           <template v-else>
-            <label class="algorithm-select">算法<select v-model="selectedKey" :disabled="running || !algorithms.length"><option v-if="!algorithms.length" value="">暂无可用算法</option><option v-for="algorithm in algorithms" :key="algorithm.key" :value="algorithm.key">{{ algorithm.name }}</option></select></label>
+            <label class="algorithm-select">算法<select v-model="selectedKey" :disabled="running || !algorithms.length"><option v-if="!algorithms.length" value="">暂无可用算法</option><optgroup v-for="group in groupedAlgorithms" :key="group.slug" :label="group.label"><option v-for="algorithm in group.items" :key="algorithm.key" :value="algorithm.key">{{ algorithm.name }}</option></optgroup></select></label>
             <p v-if="!algorithms.length" class="state-message compact empty">算法注册表当前为空，请联系课程教师配置算法后再运行。</p>
             <div v-if="selectedAlgorithm" class="algorithm-notes"><div><span>{{ categoryName(selectedAlgorithm.key) }}</span><h3>{{ selectedAlgorithm.name }}</h3><p>{{ selectedAlgorithm.description }}</p><p>{{ selectedAlgorithm.explanation }}</p></div><FormulaBlock :formula="selectedAlgorithm.formula" /></div>
             <p v-if="incompatible" class="validation-error" role="alert">当前算法不支持{{ graph.directed ? '有向图' : '无向图' }}，请选择兼容方法或修改图类型。</p>

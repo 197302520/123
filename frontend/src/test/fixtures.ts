@@ -29,6 +29,7 @@ export const degreeAlgorithm: AlgorithmSpec = {
   explanation: '连接越多，局部影响力通常越强。',
   advantages: ['直观'],
   limitations: ['只观察一步邻居'],
+  module: 'network-measures',
 }
 
 export const completedResult: RunResult = {

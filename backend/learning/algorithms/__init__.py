@@ -27,6 +27,7 @@ COMMUNITIES = {
     "community.kernighan_lin", "community.agglomerative", "community.divisive",
     "community.girvan_newman", "community.fast_newman", "community.louvain",
     "community.leiden", "community.lpa", "community.cpm", "community.lfm", "community.slpa",
+    "community.compare",
 }
 LINK_PREDICTION = {
     "link_prediction.common_neighbors", "link_prediction.jaccard",
@@ -107,9 +108,14 @@ def execute_algorithm(
         extracted = extract_chinese_graph(
             params["text"], method=params["method"], embedding=params["embedding"],
             seed=effective_seed, model_path=params["model_path"] or None,
+            merge_threshold=params.get("merge_threshold", 0.6),
         )
         bundle = {
-            "tables": [table("entities", "实体候选", extracted["entities"]), table("relations", "关系候选", extracted["relations"])],
+            "tables": [
+                table("entities", "实体候选", extracted["entities"]),
+                table("relations", "关系候选", extracted["relations"]),
+                table("entity_merges", "同义实体合并", extracted["entity_merges"]),
+            ],
             "overlays": [overlay("extracted_graph", nodes=extracted["graph"]["nodes"], edges=extracted["graph"]["edges"])],
             "provenance": {"extraction": extracted},
         }

@@ -89,7 +89,7 @@ def test_registry_api_preserves_foundation_fields_and_adds_complete_teaching_met
         "description": "验证图结构是否可用于后续分析。",
     }
     assert {"limits", "formula", "explanation", "advantages", "limitations"} <= set(first)
-    assert len(response.json()) == 41
+    assert len(response.json()) == 42
 
 
 @pytest.mark.django_db

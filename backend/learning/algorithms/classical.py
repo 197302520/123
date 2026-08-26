@@ -53,6 +53,96 @@ def _degree_chart(network: nx.Graph | nx.DiGraph) -> dict[str, Any]:
     )
 
 
+def _floyd_bundle(network: nx.Graph | nx.DiGraph, path_pair_limit: int) -> dict[str, Any]:
+    """Dense Floyd iteration with a next-hop matrix so every distance carries its node sequence."""
+    nodes = list(sorted(network.nodes, key=str))
+    index = {node: offset for offset, node in enumerate(nodes)}
+    order = len(nodes)
+    distances = np.full((order, order), np.inf)
+    np.fill_diagonal(distances, 0.0)
+    successors = np.full((order, order), -1, dtype=np.int64)
+    for left, right, data in network.edges(data=True):
+        first, second = index[left], index[right]
+        weight = float(data.get("weight", 1))
+        if weight < distances[first, second]:
+            distances[first, second] = weight
+            successors[first, second] = second
+        if not network.is_directed() and weight < distances[second, first]:
+            distances[second, first] = weight
+            successors[second, first] = first
+    for middle in range(order):
+        candidate = distances[:, middle, None] + distances[None, middle, :]
+        improved = candidate < distances
+        row, column = np.nonzero(improved)
+        distances[row, column] = candidate[row, column]
+        successors[row, column] = successors[row, middle]
+
+    def node_sequence(first: int, second: int) -> list[str] | None:
+        sequence = [first]
+        cursor = first
+        while cursor != second:
+            following = int(successors[cursor, second])
+            if following < 0:
+                return None
+            cursor = following
+            sequence.append(cursor)
+            if len(sequence) > order:
+                return None
+        return [nodes[offset] for offset in sequence]
+
+    distance_rows: list[dict[str, Any]] = []
+    path_rows: list[dict[str, Any]] = []
+    reachable_pairs = 0
+    distance_total = 0.0
+    unreachable = False
+    truncated = False
+    for first_offset, first_node in enumerate(nodes):
+        for second_offset, second_node in enumerate(nodes):
+            value = float(distances[first_offset, second_offset])
+            if math.isinf(value):
+                unreachable = True
+                distance_rows.append({"source": first_node, "target": second_node, "distance": None})
+                continue
+            distance_rows.append({"source": first_node, "target": second_node, "distance": value})
+            if first_offset != second_offset:
+                reachable_pairs += 1
+                distance_total += value
+            if len(path_rows) >= path_pair_limit:
+                truncated = True
+                continue
+            sequence = node_sequence(first_offset, second_offset)
+            path_rows.append({
+                "source": first_node,
+                "target": second_node,
+                "path": " -> ".join(map(str, sequence)) if sequence else None,
+                "distance": value,
+            })
+    average_length = round(distance_total / reachable_pairs, 6) if reachable_pairs else None
+    warnings = ["图中存在不可达节点对，以 null 表示无穷距离。"] if unreachable else []
+    if truncated:
+        warnings.append(f"完整路径节点序列仅输出前 {path_pair_limit} 个点对，可用 path_pair_limit 提高上限。")
+    summary_row = {
+        "average_shortest_path_length": average_length,
+        "reachable_pairs": reachable_pairs,
+        "unreachable_pairs": sum(1 for row in distance_rows if row["distance"] is None),
+    }
+    return {
+        "tables": [
+            table("distances", "Floyd 距离矩阵", distance_rows),
+            table("paths", "最短路径节点序列", path_rows),
+            table("path_summary", "平均最短路径", [summary_row]),
+        ],
+        "charts": [chart("distance_heatmap", "heatmap", [{"name": "distance", "data": distance_rows}])],
+        "warnings": warnings,
+        "provenance": {
+            "average_shortest_path_length": average_length,
+            "iteration": "d_ij=min(d_ij,d_ik+d_kj)",
+            "path_sequence_limit": path_pair_limit,
+            "path_sequence_truncated": truncated,
+        },
+    }
+
+
 def _node_measure_bundle(network: nx.Graph | nx.DiGraph, values: dict[Any, float], name: str) -> dict[str, Any]:
     rows = [{"node": str(node), "value": float(values[node])} for node in sorted(values, key=str)]
     return {
@@ -147,21 +237,7 @@ def run_classical(key: str, graph: dict[str, Any], params: dict[str, Any], seed:
         warnings = [] if _connected(network) else ["图非连通；直径与平均路径仅基于最大弱连通分量。"]
         return {"tables": [table("summary", "拓扑摘要", [summary])], "charts": [_degree_chart(network)], "warnings": warnings}
     if key == "paths.floyd":
-        distances = dict(nx.floyd_warshall(network, weight="weight"))
-        rows = []
-        unreachable = False
-        for source in sorted(network.nodes, key=str):
-            for target in sorted(network.nodes, key=str):
-                value = float(distances[source][target])
-                if math.isinf(value):
-                    value = None
-                    unreachable = True
-                rows.append({"source": str(source), "target": str(target), "distance": value})
-        return {
-            "tables": [table("distances", "Floyd 距离矩阵", rows)],
-            "charts": [chart("distance_heatmap", "heatmap", [{"name": "distance", "data": rows}])],
-            "warnings": ["图中存在不可达节点对，以 null 表示无穷距离。"] if unreachable else [],
-        }
+        return _floyd_bundle(network, params["path_pair_limit"])
     if key == "clustering.coefficient":
         values = nx.clustering(network, weight=None)
         rows = [{"node": str(node), "coefficient": float(values[node])} for node in sorted(values, key=str)]

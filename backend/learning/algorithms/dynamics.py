@@ -33,6 +33,14 @@ def _influence_average(network: nx.Graph | nx.DiGraph, opinions: dict[Any, float
     return sum(opinions[neighbor] * weight for neighbor, weight in weighted) / denominator
 
 
+def _variance(values: dict[Any, float]) -> float:
+    count = len(values)
+    if count == 0:
+        return 0.0
+    mean = sum(values.values()) / count
+    return sum((value - mean) ** 2 for value in values.values()) / count
+
+
 def _history_chart(history: list[dict[Any, float]]) -> dict[str, Any]:
     nodes = list(sorted(history[0], key=str)) if history else []
     return chart(
@@ -53,6 +61,7 @@ def run_opinion(key: str, graph: dict[str, Any], params: dict[str, Any], seed: i
         raise AlgorithmInputError("意见模型至少需要 1 个节点。")
     opinions = _initial_opinions(network, params)
     history = [dict(opinions)]
+    variance_history = [_variance(opinions)]
     tolerance = params["tolerance"]
     converged = False
     iterations = 0
@@ -69,6 +78,7 @@ def run_opinion(key: str, graph: dict[str, Any], params: dict[str, Any], seed: i
             delta = max(abs(updated[node] - opinions[node]) for node in network.nodes)
             opinions = updated
             history.append(dict(opinions))
+            variance_history.append(_variance(opinions))
             if delta <= tolerance:
                 converged = True
                 break
@@ -87,6 +97,7 @@ def run_opinion(key: str, graph: dict[str, Any], params: dict[str, Any], seed: i
                 opinions[target] -= params["mu"] * difference
             if iterations <= 100 or iterations % max(1, params["steps"] // 100) == 0:
                 history.append(dict(opinions))
+                variance_history.append(_variance(opinions))
         # Deffuant converges to one or more stable bounded-confidence clusters.
         active_differences = [abs(opinions[source] - opinions[target]) for source, target in edges if abs(opinions[source] - opinions[target]) <= params["confidence"]]
         converged = not active_differences or max(active_differences) <= max(tolerance, 1e-3)
@@ -101,6 +112,7 @@ def run_opinion(key: str, graph: dict[str, Any], params: dict[str, Any], seed: i
             delta = max(abs(updated[node] - opinions[node]) for node in network.nodes)
             opinions = updated
             history.append(dict(opinions))
+            variance_history.append(_variance(opinions))
             if delta <= tolerance:
                 converged = True
                 break
@@ -108,13 +120,37 @@ def run_opinion(key: str, graph: dict[str, Any], params: dict[str, Any], seed: i
         raise KeyError(key)
 
     rows = [{"node": str(node), "initial_opinion": history[0][node], "opinion": float(opinions[node])} for node in sorted(network.nodes, key=str)]
+    variance_rows = []
+    for step, value in enumerate(variance_history):
+        variance_rows.append({
+            "step": step,
+            "variance": round(value, 8),
+            "delta_from_previous": round(abs(value - variance_history[step - 1]), 8) if step else None,
+        })
+    final_variance = variance_history[-1] if variance_history else 0.0
     warnings = [] if converged else [f"在 {iterations} 次迭代/交互后未达到设定收敛容差。"]
     return {
-        "tables": [table("opinions", "意见结果", rows)],
+        "tables": [table("opinions", "意见结果", rows), table("opinion_variance", "观点方差轨迹", variance_rows)],
         "overlays": [overlay("opinions", nodes=[{"node": row["node"], "value": row["opinion"]} for row in rows])],
-        "charts": [_history_chart(history)],
+        "charts": [
+            _history_chart(history),
+            chart(
+                "opinion_variance",
+                "line",
+                [{"name": "观点方差", "data": [{"x": row["step"], "y": row["variance"]} for row in variance_rows]}],
+                x_label="迭代",
+                y_label="方差",
+            ),
+        ],
         "warnings": warnings,
-        "provenance": {"converged": converged, "iterations": iterations, "final_range": max(opinions.values()) - min(opinions.values())},
+        "provenance": {
+            "converged": converged,
+            "steady_state": converged,
+            "iterations": iterations,
+            "final_range": max(opinions.values()) - min(opinions.values()),
+            "final_variance": round(final_variance, 8),
+            "stability_criterion": f"|Δx|max ≤ {tolerance} 即方差不再变化，判定为稳态。",
+        },
     }
 
 def _parse_partition(values: list[Any], nodes: set[str]) -> list[set[str]]:

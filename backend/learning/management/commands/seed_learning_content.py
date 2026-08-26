@@ -5,6 +5,7 @@ from django.core.management.base import BaseCommand
 from networkx.algorithms import bipartite
 
 from learning.algorithms.graph import nx_to_graph
+from learning.data.sarasota_dolphins import EDGES as DOLPHIN_EDGES, NODES as DOLPHIN_NODES
 from learning.models import Case, CourseModule, Dataset, PublishStatus
 
 
@@ -35,15 +36,7 @@ def case_definitions():
     karate = nx_to_graph(karate_network)
     karate_attributes = {str(node): {"faction": values["club"]} for node, values in karate_network.nodes(data=True)}
 
-    dolphin_nodes = [f"D{index:02d}" for index in range(1, 13)]
-    dolphin_edges = [
-        ("D01", "D02"), ("D01", "D03"), ("D02", "D03"), ("D02", "D04"),
-        ("D03", "D04"), ("D04", "D05"), ("D05", "D06"), ("D04", "D06"),
-        ("D07", "D08"), ("D07", "D09"), ("D08", "D09"), ("D08", "D10"),
-        ("D09", "D10"), ("D10", "D11"), ("D11", "D12"), ("D10", "D12"),
-        ("D06", "D07"),
-    ]
-    dolphins = graph(dolphin_nodes, dolphin_edges)
+    dolphins = graph(DOLPHIN_NODES, ((*edge, 1) for edge in DOLPHIN_EDGES))
 
     memberships = {
         "P1": ["C1", "C2"], "P2": ["C1"], "P3": ["C1", "C2"], "P4": ["C2", "C3"],
@@ -100,10 +93,11 @@ def case_definitions():
             "metadata": {"source": "Zachary (1977)；NetworkX 3.x karate_club_graph", "license": "NetworkX BSD-3-Clause；原始事实拓扑按论文完整署名", "cleaning": "节点转为稳定字符串 ID；无向边权保留为数值", "version": "2026.08-v1", "graph": karate, "node_attributes": karate_attributes, "algorithm": "community.louvain", "parameters": {"resolution": 1.0}, "seed": 7},
         },
         {
-            "slug": "dolphins", "title": "生成式海豚社交教学网络", "case_title": "海豚社群边界",
-            "summary": "在不暴露原始动物观察记录的合成网络上比较社群。", "module": "communities",
-            "provenance": "教学网络受 Lusseau et al. (2003) 海豚社交研究启发，拓扑由本项目独立生成。",
-            "metadata": {"source": generated, "license": cc0, "cleaning": "生成两个稠密群体与一条桥接关系", "version": "2026.08-v1", "graph": dolphins, "algorithm": "community.lpa", "parameters": {}, "seed": 13},
+            "slug": "dolphins", "title": "Sarasota 海豚社群网络（Lusseau 数据）", "case_title": "海豚社群重叠社区划分",
+            "summary": "在真实海豚关联网络上用 CPM 派系渗透与 SLPA 划分重叠社区，并配合链路预测算法做对比实验。",
+            "module": "communities",
+            "provenance": "D. Lusseau, K. Schneider, O. J. Boisseau, P. Haase, E. Slooten & S. M. Dawson (2003), The bottlenose dolphin community of Doubtful Sound features a large proportion of long-lasting associations, Behavioral Ecology and Sociobiology 54:396-405；经 M. E. J. Newman 网络数据仓库（dolphins.gml）分发。野外观测地点为新西兰 Doubtful Sound，教学说明书沿用 Sarasota 海豚社群称谓。",
+            "metadata": {"source": "Lusseau et al. (2003)；Newman 网络数据仓库 dolphins.gml", "license": "学术引用使用：课堂教学须引用 Lusseau et al. (2003) 原文", "cleaning": "保留原始个体名称作为节点 ID；GML 节点编号映射为海豚名；边权统一为 1", "version": "2026.08-v2", "graph": dolphins, "algorithm": "community.cpm", "parameters": {"clique_size": 3}, "seed": 13},
         },
         {
             "slug": "football-bipartite", "title": "生成式球员—俱乐部二部网络", "case_title": "球员流动与俱乐部投影",

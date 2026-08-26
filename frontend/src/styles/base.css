@@ -294,6 +294,12 @@ textarea { resize: vertical; font-family: var(--mono); font-size: .78rem; line-h
 .result-warnings ul { margin-bottom: 0; }
 .result-section { margin-top: 2.2rem; }
 .result-section > h3 { font-size: .8rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); }
+.layout-select { display: inline-flex; align-items: center; gap: .5rem; margin-bottom: 1rem; font-size: .78rem; font-weight: 600; color: #33433c; }
+.layout-select select { min-height: 2.2rem; padding: .3rem .55rem; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface); font-size: .78rem; color: #26332d; }
+.export-cards { display: grid; gap: .8rem; margin-bottom: 1.4rem; }
+.export-card { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: .7rem; padding: .9rem 1.1rem; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.export-meta { display: grid; gap: .15rem; font-size: .82rem; overflow-wrap: anywhere; }
+.export-meta span { color: var(--ink-soft); font-size: .72rem; }
 .table-scroll { overflow-x: auto; margin-bottom: 1.4rem; border: 1px solid var(--line); border-radius: var(--radius-sm); }
 table { width: 100%; border-collapse: collapse; background: var(--surface); font-size: .82rem; }
 caption { padding: .9rem 1rem; text-align: left; font-size: 1rem; font-weight: 700; caption-side: top; background: var(--surface-soft); border-bottom: 1px solid var(--line); }
@@ -321,11 +327,50 @@ tbody tr:hover { background: var(--brand-soft); }
 
 @keyframes pulse { 50% { transform: scale(1.5); opacity: .5; } }
 
+/* ===== 视觉升级：按钮、英雄区、模块与算法卡片 ===== */
+.button.primary { background: linear-gradient(135deg, var(--brand) 0%, #12a06e 100%); border-color: transparent; box-shadow: 0 6px 16px rgba(14, 138, 95, .28); }
+.button.primary:hover { background: linear-gradient(135deg, var(--brand-deep) 0%, var(--brand) 100%); box-shadow: 0 8px 22px rgba(11, 110, 75, .34); }
+.button.ghost { background: transparent; border-color: var(--brand); color: var(--brand-deep); }
+.button.ghost:hover { background: var(--brand-soft); border-color: var(--brand-deep); color: var(--brand-deep); }
+
+.hero { padding-top: clamp(2.6rem, 5.5vw, 4.2rem); background:
+  radial-gradient(52% 70% at 82% 6%, rgba(14, 138, 95, .12), transparent 62%),
+  radial-gradient(40% 60% at 4% 88%, rgba(109, 90, 142, .09), transparent 58%),
+  linear-gradient(180deg, #e9f5ee 0%, var(--bg) 100%); }
+.hero h1 em { position: relative; font-style: normal; background: linear-gradient(120deg, var(--brand-deep), #12a06e 70%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+.module-grid { grid-template-columns: repeat(3, 1fr); }
+.module-card { border-top: 3px solid var(--brand); }
+.module-card:nth-child(2n) { border-top-color: #6d5a8e; }
+.module-card:nth-child(3n) { border-top-color: #b07d10; }
+.module-card .module-no { display: flex; align-items: center; justify-content: space-between; padding-inline: 1.05rem; background: none; border-bottom: 0; }
+.module-card .module-no::after { content: "→"; opacity: 0; transform: translateX(-6px); transition: opacity .18s ease, transform .18s ease; }
+.module-card:hover .module-no::after { opacity: 1; transform: none; }
+
+.algorithm-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.algorithm-card { position: relative; display: flex; flex-direction: column; gap: .5rem; padding: 1.2rem 1.15rem 1.05rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); text-decoration: none; color: var(--ink); box-shadow: var(--shadow-sm); overflow: hidden; transition: box-shadow .18s ease, border-color .18s ease, transform .18s ease; }
+.algorithm-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: linear-gradient(180deg, var(--brand), #7ac9a4); opacity: 0; transition: opacity .18s ease; }
+.algorithm-card:hover { border-color: #9fd4bb; box-shadow: var(--shadow-md); transform: translateY(-3px); color: var(--ink); }
+.algorithm-card:hover::before { opacity: 1; }
+.algorithm-card strong { font-size: 1.02rem; }
+.algorithm-card .algorithm-chip { align-self: flex-start; padding: .14rem .6rem; border-radius: 999px; background: var(--surface-soft); color: #40514a; font-size: .7rem; font-weight: 700; }
+.algorithm-card .algorithm-formula { padding: .45rem .6rem; border-radius: var(--radius-sm); background: var(--surface-soft); color: var(--brand-deep); font-family: var(--mono); font-size: .72rem; overflow-wrap: anywhere; }
+.algorithm-card small { color: var(--ink-soft); font-size: .82rem; line-height: 1.6; }
+.algorithm-card i { margin-top: auto; padding-top: .55rem; font-style: normal; font-size: .82rem; font-weight: 700; color: var(--brand-deep); }
+.module-algorithms { margin-top: 2.4rem; display: grid; gap: 1.3rem; }
+.module-algorithms .home-more { margin-top: .4rem; }
+
+.steps-strip { position: relative; }
+.steps-strip::before { content: ""; position: absolute; top: 1.05rem; left: 6%; right: 6%; height: 2px; background: repeating-linear-gradient(90deg, #bfe0cf 0 10px, transparent 10px 18px); }
+.step-card { z-index: 1; }
+
 @media (max-width: 1050px) {
   .hero { grid-template-columns: 1fr; }
   .module-grid { grid-template-columns: repeat(2, 1fr); }
+  .algorithm-grid { grid-template-columns: repeat(2, 1fr); }
   .course-ledger { grid-template-columns: 1fr; }
   .steps-strip { grid-template-columns: 1fr; }
+  .steps-strip::before { display: none; }
   .case-cards { grid-template-columns: 1fr; }
   .lab-workbench { grid-template-columns: 1fr; }
   .history-panel { position: static; }
@@ -342,6 +387,7 @@ tbody tr:hover { background: var(--brand-soft); }
   .stat-card:nth-child(odd) { border-left: 0; }
   .stat-card:nth-child(n + 3) { margin-top: .8rem; }
   .module-grid { grid-template-columns: 1fr; }
+  .algorithm-grid { grid-template-columns: 1fr; }
   .split-intro, .case-hero, .case-section-panel, .algorithm-notes, .run-console, .module-reading-grid { grid-template-columns: 1fr; }
   .case-section-tabs { position: static; overflow-x: auto; }
   .case-section-tabs [role="tablist"] { display: flex; min-width: 640px; }

@@ -34,6 +34,7 @@ export interface AlgorithmSpec {
   explanation: string
   advantages: string[]
   limitations: string[]
+  module: string
 }
 export interface RunRequest {
   algorithm: string

@@ -12,6 +12,14 @@ const error = ref('')
 const status = ref('')
 const preview = ref<GraphInputSpec>(props.modelValue)
 const validating = ref(false)
+// 说明书 3.2：三类内置布局（FR 力导向 / Circular 环形 / 分层树形）
+type LayoutName = 'force' | 'circular' | 'tree'
+const layoutName = ref<LayoutName>('force')
+const layoutOptions: Array<{ value: LayoutName; label: string }> = [
+  { value: 'force', label: 'FR 力导向布局' },
+  { value: 'circular', label: 'Circular 环形布局' },
+  { value: 'tree', label: '分层树形布局' },
+]
 let sourceRevision = 0
 let activeValidation: AbortController | null = null
 
@@ -101,6 +109,7 @@ onBeforeUnmount(() => { sourceRevision += 1; activeValidation?.abort() })
     <div class="editor-actions"><button type="button" class="button secondary" :disabled="validating || disabled" @click="validate">{{ validating ? '正在校验…' : '校验图数据' }}</button><span>文件安全导入：TXT / CSV / XLSX / JSON / GraphML / GEXF · 最大 20 MB</span></div>
     <p v-if="status" class="validation-success" role="status">{{ status }}</p>
     <p v-if="error" class="validation-error" role="alert">{{ error }}</p>
-    <GraphCanvas :graph="preview" label="当前输入网络预览" />
+    <label class="layout-select">可视化布局<select v-model="layoutName" :disabled="disabled" aria-label="选择可视化布局"><option v-for="option in layoutOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
+    <GraphCanvas :graph="preview" :layout="layoutName" label="当前输入网络预览" />
   </section>
 </template>

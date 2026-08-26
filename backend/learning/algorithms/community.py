@@ -3,8 +3,9 @@ from __future__ import annotations
 import importlib.util
 import math
 import random
+import time
 from collections import Counter, defaultdict
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import networkx as nx
 
@@ -17,6 +18,63 @@ def _canonical(communities: Iterable[Iterable[Any]]) -> list[set[Any]]:
     cleaned = [set(community) for community in communities if community]
     cleaned.sort(key=lambda community: tuple(sorted(map(str, community))))
     return cleaned
+
+
+def _community_criteria_rows(network: nx.Graph, communities: list[set[Any]]) -> list[dict[str, Any]]:
+    """Radicchi-style verdicts: strong / weak / density per 说明书 6.1."""
+    overall_density = float(nx.density(network)) if len(network) > 1 else 0.0
+    n = network.number_of_nodes()
+    rows: list[dict[str, Any]] = []
+    for index, community in enumerate(communities):
+        members = set(community)
+        strong = True
+        internal_degree_total = 0.0
+        external_degree_total = 0.0
+        boundary_pairs = 0
+        for node in members:
+            node_internal = 0.0
+            node_external = 0.0
+            for neighbor, data in network[node].items():
+                weight = float(data.get("weight", 1))
+                if neighbor in members:
+                    node_internal += weight
+                else:
+                    node_external += weight
+                    boundary_pairs += 1
+            strong = strong and node_internal > node_external
+            internal_degree_total += node_internal
+            external_degree_total += node_external
+        internal_pairs = int(internal_degree_total / 2)
+        weak = internal_degree_total > external_degree_total
+        size = len(members)
+        pair_denominator = size * (size - 1) / 2
+        cross_denominator = size * (n - size)
+        internal_density = round(internal_pairs / pair_denominator, 6) if pair_denominator else 0.0
+        cross_density = round(boundary_pairs / cross_denominator, 6) if cross_denominator else None
+        density_ok = pair_denominator > 0 and internal_density > overall_density and (cross_density is not None and cross_density < overall_density)
+        if strong and weak:
+            verdict = "强社区且满足弱社区"
+        elif strong:
+            verdict = "强社区"
+        elif weak:
+            verdict = "弱社区"
+        else:
+            verdict = "不满足判定"
+        rows.append({
+            "community": index,
+            "size": size,
+            "internal_degree_sum": round(internal_degree_total, 6),
+            "boundary_degree_sum": round(external_degree_total, 6),
+            "internal_edge_pairs": internal_pairs,
+            "boundary_edge_pairs": boundary_pairs,
+            "internal_density": internal_density,
+            "cross_density": cross_density,
+            "strong_community": strong,
+            "weak_community": weak,
+            "density_criterion": density_ok,
+            "verdict": verdict,
+        })
+    return rows
 
 
 def _partition_bundle(network: nx.Graph, communities: Iterable[Iterable[Any]], *, hierarchy: list[Any] | None = None) -> dict[str, Any]:
@@ -45,6 +103,10 @@ def _partition_bundle(network: nx.Graph, communities: Iterable[Iterable[Any]], *
         "charts": [chart("community_sizes", "bar", [{"name": "社区规模", "data": [{"x": index, "y": len(group)} for index, group in enumerate(canonical)]}])],
         "provenance": {"community_count": len(canonical), "modularity": modularity, "overlapping": not disjoint},
     }
+    if network.number_of_edges():
+        criteria_rows = _community_criteria_rows(network, canonical)
+        bundle["tables"].append(table("community_criteria", "强社区/弱社区/密度判定", criteria_rows))
+        bundle["provenance"]["overall_edge_density"] = float(nx.density(network)) if len(network) > 1 else 0.0
     if hierarchy is not None:
         bundle["tables"].append(table("hierarchy", "层次步骤", hierarchy))
     return bundle
@@ -151,6 +213,113 @@ def _slpa(network: nx.Graph, iterations: int, threshold: float, seed: int | None
     return _canonical(maximal)
 
 
+def _girvan_newman_partition(network: nx.Graph, target: int) -> list[set[Any]]:
+    generator = nx.community.girvan_newman(network)
+    communities = [{node for node in group} for group in next(generator)]
+    while len(communities) < min(target, len(network)):
+        communities = [{node for node in group} for group in next(generator)]
+    return communities
+
+
+def _compare_bundle(network: nx.Graph, params: dict[str, Any], seed: int | None) -> dict[str, Any]:
+    """One aggregate run: modularity table across algorithms plus a best-partition conclusion."""
+    resolution = params["resolution"]
+    target = min(params.get("communities", 2), len(network))
+    small_network = len(network) <= 60
+    agenda: list[tuple[str, str, bool, Callable[[], Iterable[Iterable[Any]]]]] = [
+        ("community.fast_newman", "Fast Newman 贪心模块度", False,
+         lambda: nx.community.greedy_modularity_communities(network, weight="weight", resolution=resolution)),
+        ("community.louvain", "Louvain", False,
+         lambda: nx.community.louvain_communities(network, weight="weight", resolution=resolution, seed=seed)),
+        ("community.leiden", "Leiden", False, lambda: _leiden(network, resolution, seed)[0]),
+        ("community.lpa", "标签传播 LPA", False,
+         lambda: nx.community.asyn_lpa_communities(network, weight="weight", seed=seed)),
+    ]
+    if small_network:
+        agenda.extend([
+            ("community.kernighan_lin", "Kernighan–Lin 二分", False,
+             lambda: nx.community.kernighan_lin_bisection(network, weight="weight", seed=seed)),
+            ("community.agglomerative", "凝聚层次社区", False, lambda: _agglomerative(network, target, resolution)[0]),
+            ("community.divisive", "分裂层次社区", False, lambda: _divisive(network, target)[0]),
+            ("community.girvan_newman", "Girvan–Newman", False, lambda: _girvan_newman_partition(network, target)),
+            ("community.cpm", "CPM 派系渗透法（重叠）", True,
+             lambda: nx.community.k_clique_communities(network, params.get("clique_size", 3))),
+            ("community.lfm", "LFM 局部适应度（重叠）", True, lambda: _lfm(network, params.get("alpha", 1.0), seed)),
+            ("community.slpa", "SLPA 标签传播（重叠）", True,
+             lambda: _slpa(network, params.get("iterations", 30), params.get("threshold", 0.1), seed)),
+        ])
+    rows: list[dict[str, Any]] = []
+    for key, label, declared_overlapping, producer in agenda:
+        started = time.perf_counter()
+        status = "ok"
+        try:
+            grouping = [group for group in producer() if group]
+            if not grouping:
+                raise AlgorithmInputError("该算法未产生任何社区。")
+            membership_counts = Counter(node for group in grouping for node in group)
+            disjoint = all(count == 1 for count in membership_counts.values())
+            overlapping = not disjoint
+            modularity = (
+                float(nx.community.modularity(network, grouping, weight="weight", resolution=resolution))
+                if disjoint and network.number_of_edges()
+                else None
+            )
+            community_count = len(grouping)
+        except Exception as exc:  # noqa: BLE001 - one failing algorithm must not kill the battery.
+            status = f"运行失败：{type(exc).__name__}"
+            modularity = None
+            community_count = None
+            overlapping = declared_overlapping
+        rows.append({
+            "algorithm": label,
+            "key": key,
+            "modularity": round(modularity, 6) if modularity is not None else None,
+            "community_count": community_count,
+            "overlapping": overlapping,
+            "comparable": modularity is not None,
+            "runtime_ms": round((time.perf_counter() - started) * 1000, 1),
+            "status": status,
+        })
+    comparable_rows = sorted(
+        (row for row in rows if row["comparable"]),
+        key=lambda row: (-row["modularity"], row["key"]),
+    )
+    non_comparable_rows = [row for row in rows if not row["comparable"]]
+    ordered_rows = [
+        {**row, "rank": index + 1}
+        for index, row in enumerate(comparable_rows)
+    ] + [{**row, "rank": None} for row in non_comparable_rows]
+    warnings: list[str] = []
+    if not small_network:
+        warnings.append("节点数超过 60；二分与层次类算法在大网络代价过高，本次仅对比可扩展方法（重叠算法不参与模块度排序）。")
+    conclusion = None
+    provenance_extra: dict[str, Any] = {}
+    if comparable_rows:
+        best = comparable_rows[0]
+        conclusion = (
+            f"在分辨率 γ={resolution} 下，{best['algorithm']} 以最高模块度 Q={best['modularity']:.6f} 领先；"
+            "建议以该划分为基准，结合可视化与业务含义复核最优算法筛选结论。"
+        )
+        provenance_extra = {"best_algorithm": best["algorithm"], "best_algorithm_key": best["key"], "best_modularity": best["modularity"]}
+    else:
+        warnings.append("本次没有任何可比较的非重叠划分，无法给出最优算法筛选结论。")
+    return {
+        "tables": [table("modularity_comparison", "多算法模块度对比表", ordered_rows)],
+        "charts": [chart(
+            "modularity_comparison",
+            "bar",
+            [{"name": "模块度 Q", "data": [{"x": row["algorithm"], "y": row["modularity"]} for row in comparable_rows]}],
+        )],
+        "warnings": warnings,
+        "provenance": {
+            **provenance_extra,
+            "conclusion": conclusion,
+            "compared_algorithms": len(rows),
+            "resolution": resolution,
+        },
+    }
+
+
 def _leiden(network: nx.Graph, resolution: float, seed: int | None) -> tuple[list[set[Any]], dict[str, Any], list[str]]:
     if importlib.util.find_spec("igraph") and importlib.util.find_spec("leidenalg"):
         import igraph as ig
@@ -178,6 +347,8 @@ def run_community(key: str, graph: dict[str, Any], params: dict[str, Any], seed:
     if len(network) < 2:
         raise AlgorithmInputError("社区发现至少需要 2 个节点。", path="graph.nodes")
     if network.number_of_edges() == 0:
+        if key == "community.compare":
+            raise AlgorithmInputError("无边图不含可比较的社区划分证据。", path="graph.edges")
         bundle = _partition_bundle(network, [{node} for node in sorted(network.nodes, key=str)])
         bundle["warnings"] = ["无边图不含社区连接证据；每个节点作为独立社区返回。"]
         return bundle
@@ -186,6 +357,8 @@ def run_community(key: str, graph: dict[str, Any], params: dict[str, Any], seed:
     warnings: list[str] = []
     extra_provenance: dict[str, Any] = {}
     hierarchy = None
+    if key == "community.compare":
+        return _compare_bundle(network, params, seed)
     if key == "community.kernighan_lin":
         left, right = nx.community.kernighan_lin_bisection(network, weight="weight", seed=seed)
         communities = [left, right]

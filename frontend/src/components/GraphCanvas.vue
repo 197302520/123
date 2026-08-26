@@ -4,7 +4,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { GraphInputSpec, RunOverlay } from '../api/contracts'
 import { allowsMotion } from '../accessibility'
 
-const props = defineProps<{ graph: GraphInputSpec; overlay?: RunOverlay | null; label?: string }>()
+const props = withDefaults(defineProps<{ graph: GraphInputSpec; overlay?: RunOverlay | null; label?: string; layout?: 'force' | 'circular' | 'tree' }>(), { overlay: null, label: '', layout: 'force' })
 const container = ref<HTMLDivElement | null>(null)
 let instance: Core | null = null
 
@@ -52,6 +52,15 @@ function elements(): ElementDefinition[] {
   ]
 }
 
+// 说明书 3.2：FR 力导向（cose）、Circular 环形、分层树形三类内置布局。
+function layoutOptions() {
+  if (props.layout === 'circular') return { name: 'circle', animate: false, fit: true, padding: 28 }
+  if (props.layout === 'tree') {
+    return { name: 'breadthfirst', directed: props.graph.directed, animate: allowsMotion(), animationDuration: 450, spacingFactor: 1.15, fit: true, padding: 28 }
+  }
+  return { name: 'cose', animate: allowsMotion(), animationDuration: 450, randomize: false, fit: true, padding: 28 }
+}
+
 function renderGraph() {
   if (!container.value) return
   instance?.destroy()
@@ -71,14 +80,14 @@ function renderGraph() {
       } },
       { selector: 'edge[predicted = 1]', style: { 'line-color': '#b34a32', 'target-arrow-color': '#b34a32', 'line-style': 'dashed', width: 4, opacity: 1 } },
     ],
-    layout: { name: 'cose', animate: allowsMotion(), animationDuration: 450, randomize: false, fit: true, padding: 28 },
+    layout: layoutOptions(),
     minZoom: 0.35,
     maxZoom: 2.5,
   })
 }
 
 onMounted(renderGraph)
-watch(() => [props.graph, props.overlay] as const, renderGraph, { deep: true })
+watch(() => [props.graph, props.overlay, props.layout] as const, renderGraph, { deep: true })
 onBeforeUnmount(() => instance?.destroy())
 </script>
 

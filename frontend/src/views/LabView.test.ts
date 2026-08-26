@@ -63,6 +63,15 @@ describe('free laboratory workflow', () => {
     expect((screen.getByRole('textbox', { name: '粘贴图数据' }) as HTMLTextAreaElement).value).toContain('"id": "a"')
   })
 
+  test('preselects the URL-requested algorithm and groups the picker by course module', async () => {
+    window.history.pushState({}, '', '/lab?algorithm=centrality.degree')
+    renderLab()
+
+    const option = await screen.findByRole('option', { name: '度中心性' }) as HTMLOptionElement
+    expect(option.selected).toBe(true)
+    expect(option.closest('optgroup')?.getAttribute('label')).toBe('模块二 · 网络测量')
+  })
+
   test('invalidates readiness immediately after editing a validated graph and will not submit it', async () => {
     const user = userEvent.setup()
     renderLab()

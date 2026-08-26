@@ -25,6 +25,35 @@ def api_client():
 
 
 @pytest.mark.django_db
+def test_dolphin_case_uses_real_sarasota_teaching_network_with_cpm_overlap(api_client):
+    """The manual's dolphin case must be the real Lusseau network with CPM/SLPA overlap teaching."""
+    call_command("seed_learning_content")
+    detail = api_client.get("/api/cases/dolphins/").json()
+    metadata = detail["dataset"]["metadata"]
+    graph_data = metadata["graph"]
+
+    assert len(graph_data["nodes"]) == 62
+    assert len(graph_data["edges"]) == 159
+    assert metadata["algorithm"] == "community.cpm"
+    assert metadata["parameters"] == {"clique_size": 3}
+    assert "Lusseau" in detail["dataset"]["provenance"]
+
+    submission = api_client.post("/api/runs/", {
+        "algorithm": metadata["algorithm"],
+        "graph": graph_data,
+        "parameters": metadata["parameters"],
+        "seed": metadata["seed"],
+    }, format="json")
+    result = api_client.get(f"/api/runs/{submission.json()['id']}/result/").json()
+    memberships = next(table for table in result["tables"] if table["key"] == "communities")
+    overlapping_dolphins = [row for row in memberships["rows"] if len(row["memberships"]) > 1]
+    criteria_rows = next(table for table in result["tables"] if table["key"] == "community_criteria")["rows"]
+
+    assert overlapping_dolphins, "CPM k=3 应展示重叠社区教学特征"
+    assert len(criteria_rows) >= 1
+
+
+@pytest.mark.django_db
 def test_seed_is_idempotent_and_all_seven_provenanced_cases_run_real_algorithms(api_client):
     """Dropping a graph/algorithm/provenance field would make a seeded case non-runnable."""
     call_command("seed_learning_content")

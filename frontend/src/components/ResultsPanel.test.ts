@@ -1,5 +1,5 @@
 import { render, screen } from '@testing-library/vue'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
 import ResultsPanel from './ResultsPanel.vue'
 import { completedResult, historyRecord } from '../test/fixtures'
 
@@ -100,5 +100,56 @@ describe('real result rendering', () => {
   test('does not compare a run with itself', () => {
     render(ResultsPanel, { props: { result: completedResult, currentRecord: historyRecord, compareRecord: historyRecord }, global: { stubs } })
     expect(screen.queryByRole('region', { name: '实验结果对比' })).not.toBeInTheDocument()
+  })
+
+  test('renders an export result as a download card instead of raw content, including native xlsx', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup()
+    const createObjectURL = vi.fn().mockReturnValue('blob:mock')
+    const revokeObjectURL = vi.fn()
+    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
+    const clickSpy = vi.fn()
+    const originalCreateElement = document.createElement.bind(document)
+    vi.spyOn(document, 'createElement').mockImplementation(((tagName: string) => {
+      const element = originalCreateElement(tagName)
+      if (tagName === 'a') (element as HTMLAnchorElement).click = clickSpy
+      return element
+    }) as typeof document.createElement)
+    const result = {
+      ...completedResult,
+      charts: [],
+      overlays: [],
+      tables: [{
+        key: 'export',
+        name: '图导出',
+        columns: ['format', 'mime_type', 'filename', 'encoding'],
+        rows: [{
+          format: 'xlsx',
+          mime_type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          filename: 'network.xlsx',
+          encoding: 'base64',
+        }],
+      }],
+    }
+    render(ResultsPanel, { props: { result }, global: { stubs } })
+
+    expect(screen.getByRole('button', { name: '下载 network.xlsx' })).toBeVisible()
+    await user.click(screen.getByRole('button', { name: '下载 network.xlsx' }))
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1)
+    const blob = createObjectURL.mock.calls[0][0] as Blob
+    expect(blob.type).toContain('spreadsheetml')
+    expect(clickSpy).toHaveBeenCalledOnce()
+
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
+  test('offers the three manual layouts for every overlay canvas', () => {
+    render(ResultsPanel, { props: { result: completedResult }, global: { stubs } })
+    const selector = screen.getByRole('combobox', { name: '选择可视化布局' })
+
+    expect(selector).toHaveTextContent('FR 力导向布局')
+    expect(selector).toHaveTextContent('Circular 环形布局')
+    expect(selector).toHaveTextContent('分层树形布局')
   })
 })

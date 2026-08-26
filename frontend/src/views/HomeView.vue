@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router'
 import { fetchCases, fetchModules } from '../api/client'
 import type { CaseSummary, CourseModule } from '../api/contracts'
 import { moduleEditorial } from '../content/catalog'
+import NetworkHero from '../components/NetworkHero.vue'
 
 const modules = ref<CourseModule[]>([])
 const cases = ref<CaseSummary[]>([])
@@ -26,34 +27,19 @@ onMounted(async () => {
         <h1 id="hero-title">把关系数据交给算法，<br><em>得到可信的<wbr>网络分析结论</em></h1>
         <p class="hero-intro">
           这是一套覆盖社会网络分析全流程的教学平台：从中文文本中抽取关系建网，
-          或直接导入你自己的网络数据，一键运行 41 种算法——中心性、社区发现、链路预测、
+          或直接导入你自己的网络数据，一键运行 42 种算法——中心性、社区发现、链路预测、
           网络韧性、观点演化仿真——并生成图表与分析报告，适合课程作业、课堂实验与课程设计。
         </p>
         <div class="hero-actions">
-          <RouterLink class="button primary" to="/lab">进入实验室，开始分析</RouterLink>
+          <RouterLink class="button primary" to="/courses">按模块学习算法</RouterLink>
           <RouterLink class="button secondary" to="/cases">先浏览教学案例</RouterLink>
+          <RouterLink class="button ghost" to="/lab">直达自由实验室</RouterLink>
         </div>
       </div>
       <div class="hero-panel">
-        <svg class="hero-network" viewBox="0 0 360 220" role="img" aria-label="社会网络示意图：节点代表行动者，连线代表关系，颜色代表社区">
-          <g stroke="#cfe0d6" stroke-width="1.5">
-            <line x1="64" y1="62" x2="128" y2="38" /><line x1="64" y1="62" x2="118" y2="104" /><line x1="64" y1="62" x2="52" y2="126" />
-            <line x1="128" y1="38" x2="186" y2="66" /><line x1="118" y1="104" x2="186" y2="66" /><line x1="118" y1="104" x2="52" y2="126" />
-            <line x1="186" y1="66" x2="248" y2="40" /><line x1="186" y1="66" x2="252" y2="112" /><line x1="186" y1="66" x2="150" y2="158" />
-            <line x1="252" y1="112" x2="150" y2="158" /><line x1="252" y1="112" x2="308" y2="70" /><line x1="252" y1="112" x2="312" y2="158" />
-            <line x1="308" y1="70" x2="312" y2="158" /><line x1="150" y1="158" x2="92" y2="184" /><line x1="52" y1="126" x2="92" y2="184" />
-          </g>
-          <g>
-            <circle cx="186" cy="66" r="14" fill="#0e8a5f" /><circle cx="252" cy="112" r="11" fill="#0e8a5f" />
-            <circle cx="64" cy="62" r="9" fill="#0b6e4b" /><circle cx="128" cy="38" r="7" fill="#0b6e4b" />
-            <circle cx="118" cy="104" r="7" fill="#12a06e" /><circle cx="248" cy="40" r="7" fill="#12a06e" />
-            <circle cx="150" cy="158" r="9" fill="#0f766e" /><circle cx="92" cy="184" r="7" fill="#0f766e" />
-            <circle cx="52" cy="126" r="7" fill="#0f766e" /><circle cx="308" cy="70" r="7" fill="#b45309" />
-            <circle cx="312" cy="158" r="7" fill="#b45309" />
-          </g>
-        </svg>
+        <NetworkHero />
         <div class="hero-stats">
-          <div class="stat-card"><strong>41</strong><span>种分析算法</span></div>
+          <div class="stat-card"><strong>42</strong><span>种分析算法</span></div>
           <div class="stat-card"><strong>7</strong><span>个课程模块</span></div>
           <div class="stat-card"><strong>7</strong><span>个教学案例</span></div>
           <div class="stat-card"><strong>6</strong><span>步案例研习</span></div>
@@ -77,7 +63,7 @@ onMounted(async () => {
         <div class="step-card">
           <span class="step-no" aria-hidden="true">2</span>
           <h2>选择算法并运行</h2>
-          <p>41 种算法任选：中心性、最短路径、社区发现、链路预测、韧性攻击、观点仿真。参数可调，运行真实计算而非演示动画。</p>
+          <p>42 种算法任选：中心性、最短路径、社区发现、链路预测、韧性攻击、观点仿真。参数可调，运行真实计算而非演示动画。</p>
         </div>
         <div class="step-card">
           <span class="step-no" aria-hidden="true">3</span>

@@ -209,6 +209,70 @@ def _bge_weights(relations: list[dict[str, Any]], model: Any) -> list[float]:
     return [max(0.0, min(1.0, float(embeddings[index * 2] @ embeddings[index * 2 + 1]))) for index in range(len(relations))]
 
 
+def build_entity_merge_groups(names: set[str], threshold: float) -> tuple[dict[str, str], list[dict[str, Any]]]:
+    """Unify co-referring entities such as 阿里 / 阿里巴巴 via semantic similarity."""
+    ordered = sorted(names)
+    parent = {name: name for name in ordered}
+
+    def find(item: str) -> str:
+        while parent[item] != item:
+            parent[item] = parent[parent[item]]
+            item = parent[item]
+        return item
+
+    def union(left: str, right: str) -> None:
+        left_root, right_root = find(left), find(right)
+        if left_root == right_root:
+            return
+        smaller, larger = sorted((left_root, right_root))
+        parent[larger] = smaller
+
+    vectors = {name: _char_vector(name) for name in ordered}
+    for offset, left in enumerate(ordered):
+        for right in ordered[offset + 1:]:
+            contained = min(len(left), len(right)) >= 2 and (left in right or right in left)
+            if contained or _cosine(vectors[left], vectors[right]) >= threshold:
+                union(left, right)
+
+    mapping: dict[str, str] = {}
+    merges: list[dict[str, Any]] = []
+    clusters: dict[str, list[str]] = {}
+    for name in ordered:
+        clusters.setdefault(find(name), []).append(name)
+    for members in clusters.values():
+        representative = sorted(members, key=lambda item: (-len(item), item))[0]
+        for member in members:
+            mapping[member] = representative
+        if len(members) > 1:
+            merges.append({"representative": representative, "members": members})
+    return mapping, merges
+
+
+def apply_entity_merges(
+    entities: list[dict[str, Any]],
+    relations: list[dict[str, Any]],
+    threshold: float,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    """Rewrite co-referent names onto one canonical node and record every applied merge."""
+    if threshold <= 0:
+        return entities, relations, []
+    mapping, merges = build_entity_merge_groups({item["entity"] for item in entities}, threshold)
+    if not merges:
+        return entities, relations, []
+    rewritten = []
+    for relation in relations:
+        source = mapping.get(relation["source"], relation["source"])
+        target = mapping.get(relation["target"], relation["target"])
+        if source == target:
+            continue
+        rewritten.append({**relation, "source": source, "target": target})
+    annotated_entities = [
+        {**item, "canonical_entity": mapping.get(item["entity"], item["entity"])}
+        for item in entities
+    ]
+    return annotated_entities, rewritten, merges
+
+
 def extract_chinese_graph(
     text: str,
     *,
@@ -216,6 +280,7 @@ def extract_chinese_graph(
     embedding: str = "cosine",
     seed: int | None = None,
     model_path: str | None = None,
+    merge_threshold: float = 0.6,
 ) -> dict[str, Any]:
     del seed  # Rule extraction and local inference are deterministic by construction.
     processed = preprocess_chinese(text)
@@ -230,6 +295,9 @@ def extract_chinese_graph(
         entities, relations = _rule_candidates(normalized)
     else:
         raise AlgorithmInputError(f"不支持的文本抽取方法：{method}。", path="parameters.method")
+    if not isinstance(merge_threshold, (int, float)) or isinstance(merge_threshold, bool) or not 0 <= merge_threshold <= 1:
+        raise AlgorithmInputError("merge_threshold 必须在 0–1 之间。", path="parameters.merge_threshold")
+    entities, relations, entity_merges = apply_entity_merges(entities, relations, float(merge_threshold))
     if not relations:
         raise AlgorithmInputError("未识别到可建网的实体关系候选；请补充关系表达或切换可用模型。", code="no_candidates", path="parameters.text")
 
@@ -264,11 +332,12 @@ def extract_chinese_graph(
         "preprocessing": processed,
         "entities": entities,
         "relations": relations,
+        "entity_merges": entity_merges,
         "graph": {"directed": True, "nodes": [{"id": node, "label": node} for node in node_ids], "edges": edges},
         "weight_method": embedding,
         "correction_schema": {
             "entity_fields": ["entity", "type", "start", "end", "confidence"],
             "relation_fields": ["source", "target", "relation", "evidence", "confidence"],
-            "operations": ["accept", "edit", "delete", "add"],
+            "operations": ["accept", "edit", "delete", "add", "merge_entity"],
         },
     }

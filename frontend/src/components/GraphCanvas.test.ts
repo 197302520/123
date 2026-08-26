@@ -31,6 +31,27 @@ async function latestEdgeStyle(edgeId: string) {
 
 describe('backend overlay visual encoding', () => {
   test.each([
+    ['force', 'cose'],
+    ['circular', 'circle'],
+    ['tree', 'breadthfirst'],
+  ] as const)('switches to the %s layout the manual requires', (layout, expectedName) => {
+    render(GraphCanvas, { props: { graph: exampleGraph, overlay: null, layout } })
+
+    const options = cytoscapeMock.mock.calls[cytoscapeMock.mock.calls.length - 1][0]
+    expect(options.layout.name).toBe(expectedName)
+  })
+
+  test('defaults to the force-directed layout and keeps directed trees hierarchical', () => {
+    render(GraphCanvas, { props: { graph: { ...exampleGraph, directed: true } } })
+    expect(cytoscapeMock.mock.calls[cytoscapeMock.mock.calls.length - 1][0].layout.name).toBe('cose')
+
+    render(GraphCanvas, { props: { graph: { ...exampleGraph, directed: true }, layout: 'tree' } })
+    const treeLayout = cytoscapeMock.mock.calls[cytoscapeMock.mock.calls.length - 1][0].layout
+    expect(treeLayout.name).toBe('breadthfirst')
+    expect(treeLayout.directed).toBe(true)
+  })
+
+  test.each([
     ['node_values', { node: 'a', value: 0.4 }, 0.4],
     ['opinions', { node: 'a', opinion: 0.7 }, 0.7],
   ])('maps %s backend values to visible node size', (key, node, expected) => {

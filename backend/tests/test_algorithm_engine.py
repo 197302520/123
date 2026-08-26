@@ -1,3 +1,4 @@
+import base64
 import csv
 import io
 import json
@@ -64,7 +65,7 @@ def test_registry_is_complete_and_teaching_metadata_is_not_partial():
         "centralization.degree", "community.kernighan_lin", "community.agglomerative",
         "community.divisive", "community.girvan_newman", "community.fast_newman",
         "community.louvain", "community.leiden", "community.lpa", "community.cpm",
-        "community.lfm", "community.slpa", "robustness.attack",
+        "community.lfm", "community.slpa", "community.compare", "robustness.attack",
         "link_prediction.common_neighbors", "link_prediction.jaccard",
         "link_prediction.adamic_adar", "link_prediction.resource_allocation",
         "opinion.degroot", "opinion.friedkin_johnsen", "opinion.deffuant", "opinion.hk",
@@ -83,6 +84,20 @@ def test_registry_is_complete_and_teaching_metadata_is_not_partial():
         assert spec["explanation"].strip()
         assert spec["advantages"]
         assert spec["limitations"]
+
+
+def test_registry_module_assignment_covers_every_module_with_algorithms():
+    module_slugs = {
+        "network-basics", "network-measures", "communities", "diffusion",
+        "robustness", "link-prediction", "dynamic-networks",
+    }
+    registry = get_registry()
+
+    assert all(spec["module"] in module_slugs for spec in registry)
+    assigned = {spec["module"] for spec in registry}
+    assert assigned == module_slugs
+    counts = {slug: sum(1 for spec in registry if spec["module"] == slug) for slug in module_slugs}
+    assert min(counts.values()) >= 1
 
 
 @pytest.mark.parametrize("algorithm", [
@@ -148,6 +163,33 @@ def test_topology_floyd_and_clustering_match_a_hand_checkable_path_and_triangle(
     distances = {(row["source"], row["target"]): row["distance"] for row in table_rows(floyd, "distances")}
     assert distances[("a", "c")] == 2
     assert all(row["coefficient"] == pytest.approx(1) for row in table_rows(clustering))
+
+
+def test_floyd_outputs_complete_path_node_sequences_and_average_path_length():
+    weighted_square = graph(
+        ["a", "b", "c", "d"],
+        [("a", "b", 1), ("b", "c", 1), ("c", "d", 1), ("a", "d", 4)],
+    )
+    floyd = execute_algorithm("paths.floyd", weighted_square, {}, seed=1)
+    paths = {(row["source"], row["target"]): row for row in table_rows(floyd, "paths")}
+    metrics = table_rows(floyd, "path_summary")[0]
+
+    assert paths[("a", "d")]["path"] == "a -> b -> c -> d"
+    assert paths[("a", "d")]["distance"] == pytest.approx(3)
+    assert paths[("a", "c")]["path"] == "a -> b -> c"
+    assert metrics["average_shortest_path_length"] == pytest.approx(20 / 12)
+    assert metrics["reachable_pairs"] == 12
+    assert metrics["unreachable_pairs"] == 0
+    assert floyd["provenance"]["average_shortest_path_length"] == pytest.approx(20 / 12)
+
+
+def test_floyd_path_limit_truncates_sequence_table_with_an_explicit_warning():
+    result = execute_algorithm("paths.floyd", PATH3, {"path_pair_limit": 3}, seed=1)
+    rows = table_rows(result, "paths")
+
+    assert len(rows) == 3
+    assert any("path_pair_limit" in warning for warning in result["warnings"])
+    assert result["provenance"]["path_sequence_truncated"] is True
 
 
 def test_floyd_represents_disconnected_distance_without_invalid_json_infinity():
@@ -540,6 +582,30 @@ def test_repeated_text_relations_aggregate_to_a_downstream_valid_simple_graph():
     assert validated["validation"]["valid"] is True
 
 
+def test_coreferring_entities_merge_into_one_node_via_semantic_similarity():
+    text = "阿里巴巴与京东签署合作协议。阿里投资了星辰传媒。阿里巴巴与腾讯建立联合实验室。"
+    merged = extract_chinese_graph(text, embedding="normalized")
+    unmerged = extract_chinese_graph(text, embedding="normalized", merge_threshold=0)
+
+    assert merged["entity_merges"] == [{"representative": "阿里巴巴", "members": ["阿里", "阿里巴巴"]}]
+    assert sorted(node["id"] for node in merged["graph"]["nodes"]) == ["京东", "星辰传媒", "腾讯", "阿里巴巴"]
+    merged_pairs = {(edge["source"], edge["target"]) for edge in merged["graph"]["edges"]}
+    assert ("阿里巴巴", "京东") in merged_pairs
+    assert ("阿里巴巴", "星辰传媒") in merged_pairs
+    assert sorted(node["id"] for node in unmerged["graph"]["nodes"]) == ["京东", "星辰传媒", "腾讯", "阿里", "阿里巴巴"]
+
+    result = execute_algorithm("text.extract", graph([], []), {"text": text, "embedding": "normalized"}, seed=4)
+    merge_rows = table_rows(result, "entity_merges")
+    assert merge_rows == [{"representative": "阿里巴巴", "members": ["阿里", "阿里巴巴"]}]
+
+
+def test_entity_merge_never_unifies_distinct_short_names():
+    extracted = extract_chinese_graph("华为与比亚迪签署合作协议。腾讯投资了星辰科技！", embedding="normalized")
+
+    assert extracted["entity_merges"] == []
+    assert len(extracted["graph"]["nodes"]) == 4
+
+
 def test_paddlenlp_adapter_transforms_actual_uie_output_without_rule_substitution(monkeypatch):
     raw = [{"组织机构": [{
         "text": "华为", "start": 0, "end": 2, "probability": 0.99,
@@ -612,3 +678,110 @@ def test_standard_graph_exports_are_deterministic_and_parseable(format_name):
         safe_xml_fromstring(first["content"])
     else:
         assert "a" in first["content"]
+
+
+def test_community_criteria_reports_strong_weak_and_density_standards():
+    result = execute_algorithm("community.louvain", TWO_TRIANGLES, {}, seed=7)
+    criteria = table_rows(result, "community_criteria")
+
+    assert len(criteria) == 2
+    for row in criteria:
+        assert row["strong_community"] is True
+        assert row["weak_community"] is True
+        assert row["density_criterion"] is True
+        assert row["verdict"].startswith("强社区")
+        assert row["internal_density"] == pytest.approx(1.0)
+        assert row["cross_density"] == pytest.approx(1 / 9)
+    assert "强社区/弱社区/密度判定" in [table["name"] for table in result["tables"]]
+    assert result["provenance"]["overall_edge_density"] == pytest.approx(7 / 15)
+
+
+def test_multi_algorithm_modularity_compare_aggregates_ranking_and_conclusion():
+    first = execute_algorithm("community.compare", TWO_TRIANGLES, {}, seed=7)
+    second = execute_algorithm("community.compare", TWO_TRIANGLES, {}, seed=7)
+
+    def without_runtime(bundle: dict) -> dict:
+        stripped = json.loads(json.dumps(bundle, ensure_ascii=False))
+        table = next(table for table in stripped["tables"] if table["key"] == "modularity_comparison")
+        for row in table["rows"]:
+            row.pop("runtime_ms", None)
+        return stripped
+
+    assert without_runtime(first) == without_runtime(second)
+    rows = table_rows(first, "modularity_comparison")
+    comparable = [row for row in rows if row["comparable"]]
+
+    assert len(comparable) >= 4
+    assert comparable[0]["rank"] == 1
+    assert all(row["modularity"] <= comparable[0]["modularity"] for row in comparable)
+    ranked = [row["rank"] for row in rows if row["rank"] is not None]
+    assert ranked == list(range(1, len(ranked) + 1))
+    all_keys = {row["key"] for row in rows}
+    assert {"community.cpm", "community.slpa", "community.lfm"} <= all_keys
+    slpa_row = next(row for row in rows if row["key"] == "community.slpa")
+    assert slpa_row["overlapping"] is True
+    assert slpa_row["modularity"] is None
+    conclusion = first["provenance"]["conclusion"]
+    assert conclusion and first["provenance"]["best_algorithm"]
+    assert f"{comparable[0]['modularity']:.6f}" in conclusion
+    assert first["charts"][0]["key"] == "modularity_comparison"
+
+
+def test_large_network_compare_skips_small_graph_only_algorithms():
+    big = graph([str(index) for index in range(80)], [(str(index), str(index + 1), 1) for index in range(79)])
+    result = execute_algorithm("community.compare", big, {}, seed=5)
+    keys = {row["key"] for row in table_rows(result, "modularity_comparison")}
+
+    assert "community.girvan_newman" not in keys
+    assert "community.kernighan_lin" not in keys
+    assert any("60" in warning for warning in result["warnings"])
+
+
+def test_opinion_models_report_round_by_round_variance_with_steady_state():
+    result = execute_algorithm("opinion.degroot", PATH3, {"opinions": {"a": 0, "b": 0.5, "c": 1}, "tolerance": 1e-8}, seed=17)
+    variance_rows = table_rows(result, "opinion_variance")
+
+    variances = [row["variance"] for row in variance_rows]
+    assert variances[0] == pytest.approx(1 / 6)
+    assert variances[-1] == pytest.approx(0)
+    assert all(variances[index] >= variances[index + 1] - 1e-12 for index in range(len(variances) - 1))
+    assert result["provenance"]["final_variance"] == pytest.approx(0)
+    assert result["provenance"]["steady_state"] is True
+    assert result["provenance"]["converged"] is True
+    variance_chart = next(chart for chart in result["charts"] if chart["key"] == "opinion_variance")
+    assert variance_chart["type"] == "line"
+    assert len(variance_chart["series"][0]["data"]) == len(variance_rows)
+
+
+def test_deffuant_variance_sampling_stays_aligned_with_opinion_trajectory():
+    result = execute_algorithm("opinion.deffuant", PATH3, {"opinions": {"a": 0, "b": 0.5, "c": 1}, "steps": 300}, seed=3)
+    sampled_points = len(result["charts"][0]["series"][0]["data"])
+    variance_points = len(table_rows(result, "opinion_variance"))
+
+    assert sampled_points == variance_points
+
+
+def test_xlsx_export_writes_native_node_list_and_adjacency_workbook():
+    from openpyxl import load_workbook
+
+    result = export_graph(PATH3, "xlsx")
+
+    assert result["encoding"] == "base64"
+    assert result["mime_type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    workbook = load_workbook(io.BytesIO(base64.b64decode(result["content"])))
+    assert workbook.sheetnames == ["节点编号清单", "邻接矩阵", "边列表"]
+    node_rows = list(workbook["节点编号清单"].iter_rows(values_only=True))
+    matrix_rows = list(workbook["邻接矩阵"].iter_rows(values_only=True))
+    assert node_rows[0] == ("编号", "标签")
+    assert ("a", "a") in node_rows
+    assert matrix_rows[0] == ("node", "a", "b", "c")
+    assert matrix_rows[1] == ("a", 0, 1, 0)
+
+
+def test_registry_exposes_xlsx_choice_and_merge_threshold_parameter():
+    by_key = {spec["key"]: spec for spec in get_registry()}
+
+    assert "xlsx" in by_key["export.graph"]["parameters"]["format"]["choices"]
+    merge_threshold = by_key["text.extract"]["parameters"]["merge_threshold"]
+    assert merge_threshold["default"] == 0.6
+    assert merge_threshold["minimum"] == 0
