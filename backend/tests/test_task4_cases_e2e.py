@@ -2,7 +2,7 @@ import csv
 import io
 import json
 import zipfile
-import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import fromstring as safe_xml_fromstring
 
 import pytest
 from django.apps import apps
@@ -111,7 +111,7 @@ def test_anonymous_case_to_algorithm_to_downloadable_report_bundle_is_end_to_end
         node_rows = list(csv.DictReader(io.StringIO(archive.read("nodes.csv").decode("utf-8-sig"))))
         exported_labels = {row["label"] for row in node_rows}
         assert all("'" + label in exported_labels for label in dangerous_labels)
-        ET.fromstring(archive.read("graph.graphml"))
+        safe_xml_fromstring(archive.read("graph.graphml"))
         assert json.loads(archive.read("result.json"))["provenance"]["algorithm"] == dataset["algorithm"]
 
 

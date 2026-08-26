@@ -15,3 +15,7 @@ staticfiles/
 .superpowers/
 .worktrees/
 .mimosa/
+
+# 本地一次性工具与说明书提取文本，不属于项目代码
+extract_docx.py
+说明书_提取.txt

@@ -608,7 +608,7 @@ def test_standard_graph_exports_are_deterministic_and_parseable(format_name):
     elif format_name in {"csv", "adjacency"}:
         assert list(csv.reader(io.StringIO(first["content"])))
     elif format_name in {"graphml", "gexf"}:
-        import xml.etree.ElementTree as ET
-        ET.fromstring(first["content"])
+        from defusedxml.ElementTree import fromstring as safe_xml_fromstring
+        safe_xml_fromstring(first["content"])
     else:
         assert "a" in first["content"]

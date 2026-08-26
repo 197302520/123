@@ -29,6 +29,7 @@ dev = [
     "pytest>=8.3,<9",
     "pytest-django>=4.9,<5",
     "PyYAML>=6.0,<7",
+    "defusedxml>=0.7,<1",
 ]
 ml = [
     "torch>=2.5,<3",
