@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AlgorithmSpec, GraphSpec, HistoryRecord, RunRequest, RunResult } from '../api/contracts'
-import { fetchAlgorithms, fetchRunResult, fetchRunStatus, submitRun } from '../api/client'
+import { fetchAlgorithms, fetchCase, fetchReportBundle, fetchRunResult, fetchRunStatus, submitRun } from '../api/client'
 import FormulaBlock from '../components/FormulaBlock.vue'
 import GraphEditor from '../components/GraphEditor.vue'
 import HistoryPanel from '../components/HistoryPanel.vue'
@@ -10,7 +10,6 @@ import RunStatus from '../components/RunStatus.vue'
 import { LEARNING_EXAMPLE_GRAPH } from '../lab/exampleGraph'
 import { clearHistory, deleteHistory, listHistory, saveHistory } from '../lab/historyStore'
 import { defaultsFor } from '../lab/parameters'
-import { downloadReproducibilityBundle } from '../lab/reproducibility'
 import { executeRun, type RunPhase } from '../lab/runMachine'
 
 const ResultsPanel = defineAsyncComponent({
@@ -38,6 +37,9 @@ const records = ref<HistoryRecord[]>([])
 const historyLoading = ref(true)
 const compareRecord = ref<HistoryRecord | null>(null)
 const parametersValid = ref(true)
+const caseMessage = ref('')
+const caseLoadError = ref('')
+const reportDownloading = ref(false)
 let activeRunController: AbortController | null = null
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
@@ -60,6 +62,27 @@ onMounted(async () => {
     selectedKey.value = algorithms.value.find((item) => item.key === 'centrality.degree')?.key ?? algorithms.value[0]?.key ?? ''
   } catch (reason) { registryError.value = reason instanceof Error ? reason.message : '无法加载算法注册表。' }
   finally { registryLoading.value = false }
+  const requestedCase = new URLSearchParams(window.location.search).get('case')
+  if (requestedCase) {
+    try {
+      const detail = await fetchCase(requestedCase)
+      const metadata = detail.dataset?.metadata ?? {}
+      const caseGraph = metadata.graph
+      const caseAlgorithm = metadata.algorithm
+      if (!caseGraph || typeof caseGraph !== 'object' || typeof caseAlgorithm !== 'string') throw new Error('案例未提供可运行的图与算法。')
+      graph.value = clone(caseGraph as GraphSpec)
+      editorVersion.value += 1
+      if (algorithms.value.some((item) => item.key === caseAlgorithm)) selectedKey.value = caseAlgorithm
+      await nextTick()
+      const suppliedParameters = (metadata.parameters && typeof metadata.parameters === 'object' ? metadata.parameters : {}) as Record<string, unknown>
+      parameters.value = { ...(selectedAlgorithm.value ? defaultsFor(selectedAlgorithm.value) : {}), ...clone(suppliedParameters) }
+      seed.value = typeof metadata.seed === 'number' ? metadata.seed : null
+      graphReady.value = false
+      caseMessage.value = `已载入案例“${detail.title}”`
+    } catch (reason) {
+      caseLoadError.value = reason instanceof Error ? reason.message : '无法载入案例实验配置。'
+    }
+  }
   await historyPromise
 })
 onBeforeUnmount(() => activeRunController?.abort())
@@ -124,6 +147,23 @@ async function clearRecords() {
 }
 function selectComparison(record: HistoryRecord) { if (record.id !== result.value?.run_id) compareRecord.value = record }
 
+async function downloadBundle() {
+  if (!currentRecord.value || reportDownloading.value) return
+  reportDownloading.value = true
+  runError.value = ''
+  try {
+    const blob = await fetchReportBundle(currentRecord.value.id)
+    const url = URL.createObjectURL(blob)
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = `sna-report-${currentRecord.value.id}.zip`
+    anchor.click()
+    URL.revokeObjectURL(url)
+  } catch (reason) {
+    runError.value = reason instanceof Error ? reason.message : '无法下载复现包。'
+  } finally { reportDownloading.value = false }
+}
+
 const categoryName = (key: string) => ({ graph: '图结构', model: '随机模型', centrality: '中心性', community: '社区发现', robustness: '鲁棒性', link: '链接预测', opinion: '意见动力学', dynamic: '动态网络', embedding: '图嵌入', text: '文本建网', export: '图导出' }[key.split('.')[0]] ?? '其他方法')
 </script>
 
@@ -133,6 +173,8 @@ const categoryName = (key: string) => ({ graph: '图结构', model: '随机模�
 
     <div class="lab-workbench">
       <div class="lab-main">
+        <p v-if="caseMessage" class="state-message compact" role="status">{{ caseMessage }}；请先校验后运行。</p>
+        <p v-if="caseLoadError" class="state-message compact error" role="alert">{{ caseLoadError }}</p>
         <GraphEditor :key="editorVersion" v-model="graph" learning-example :disabled="running" @validated="onValidated" @invalid="onInvalid" />
 
         <section class="algorithm-picker" aria-labelledby="algorithm-heading">
@@ -154,7 +196,7 @@ const categoryName = (key: string) => ({ graph: '图结构', model: '随机模�
         </section>
         <p v-if="runError" class="validation-error" role="alert">{{ runError }}</p>
 
-        <div v-if="result" class="result-actions"><button type="button" class="button secondary" @click="currentRecord && downloadReproducibilityBundle(currentRecord)" :disabled="!currentRecord">下载本次复现包</button><p>包含输入图、参数、种子、算法版本与完整结果。</p></div>
+        <div v-if="result" class="result-actions"><button type="button" class="button secondary" @click="downloadBundle" :disabled="!currentRecord || reportDownloading">{{ reportDownloading ? '正在打包…' : '下载本次复现包' }}</button><p>服务器生成 HTML、JSON、CSV 与 GraphML 完整复现包。</p></div>
         <ResultsPanel v-if="result" :result="result" :current-record="currentRecord" :compare-record="compareRecord" />
       </div>
 

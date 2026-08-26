@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 
@@ -60,15 +61,39 @@ class Case(models.Model):
 class Run(models.Model):
     class Status(models.TextChoices):
         PENDING = "pending", "等待中"
+        RUNNING = "running", "运行中"
         COMPLETED = "completed", "已完成"
         FAILED = "failed", "失败"
+        CANCELLED = "cancelled", "已取消"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     algorithm = models.CharField(max_length=100)
     graph = models.JSONField()
     parameters = models.JSONField(default=dict)
+    resolved_parameters = models.JSONField(default=dict)
     seed = models.IntegerField(null=True, blank=True)
+    algorithm_version = models.CharField(max_length=32, default="1.0")
+    cache_key = models.CharField(max_length=64, blank=True, db_index=True)
+    cached_from = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="cache_hits")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     result = models.JSONField(default=dict, blank=True)
+    error = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(default=run_expiry_default, db_index=True)
+
+
+class AuditRecord(models.Model):
+    """Minimal append-only trace for authenticated teacher content mutations."""
+
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=32)
+    entity_type = models.CharField(max_length=64)
+    entity_id = models.CharField(max_length=160)
+    changes = models.JSONField(default=dict, blank=True)
+    source_ip = models.GenericIPAddressField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "id"]

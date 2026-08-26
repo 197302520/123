@@ -89,9 +89,15 @@ def graph_hash(graph: dict[str, Any]) -> str:
     import hashlib
     import json
 
+    canonical_edges = []
+    for edge in graph["edges"]:
+        canonical_edge = dict(edge)
+        if not graph["directed"] and canonical_edge["source"] > canonical_edge["target"]:
+            canonical_edge["source"], canonical_edge["target"] = canonical_edge["target"], canonical_edge["source"]
+        canonical_edges.append(canonical_edge)
     canonical = {
         "directed": graph["directed"],
         "nodes": sorted(graph["nodes"], key=lambda item: item["id"]),
-        "edges": sorted(graph["edges"], key=lambda item: (item["source"], item["target"], item["weight"])),
+        "edges": sorted(canonical_edges, key=lambda item: (item["source"], item["target"], item["weight"])),
     }
     return hashlib.sha256(json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

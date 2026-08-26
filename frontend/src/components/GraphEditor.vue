@@ -65,7 +65,7 @@ async function importFile(event: Event) {
   const revision = ++sourceRevision
   validating.value = false; status.value = ''; error.value = ''
   emit('invalid', '已选择新文件，请重新校验。')
-  if (file.size > 5 * 1024 * 1024) { error.value = '文件超过 5 MB，请先精简后再导入。'; return }
+  if (file.size > 20 * 1024 * 1024) { error.value = '文件超过 20 MB，请先精简后再导入。'; return }
   try {
     const contents = await file.text()
     if (revision !== sourceRevision) return
@@ -85,7 +85,7 @@ onBeforeUnmount(() => { sourceRevision += 1; activeValidation?.abort() })
     <div class="control-heading"><div><p class="eyebrow">GRAPH INPUT</p><h2 id="graph-input-heading">一、准备网络</h2></div><label class="file-button" :class="{ disabled }">导入文件<input type="file" :disabled="disabled" accept=".json,.txt,.csv,.edgelist,application/json,text/plain,text/csv" @change="importFile" /></label></div>
     <p class="field-help">粘贴 GraphSpec JSON，或每行输入“起点 终点 [权重]”。示例只是学习起点，不代表算法结论。</p>
     <label class="graph-text-label">粘贴图数据<textarea :value="text" :disabled="disabled" rows="14" spellcheck="false" aria-label="粘贴图数据" @input="editText" /></label>
-    <div class="editor-actions"><button type="button" class="button secondary" :disabled="validating || disabled" @click="validate">{{ validating ? '正在校验…' : '校验图数据' }}</button><span>支持 JSON / CSV / 空格边表 · 最大 5 MB</span></div>
+    <div class="editor-actions"><button type="button" class="button secondary" :disabled="validating || disabled" @click="validate">{{ validating ? '正在校验…' : '校验图数据' }}</button><span>浏览器支持 JSON / CSV / 空格边表 · 后端安全导入最大 20 MB</span></div>
     <p v-if="status" class="validation-success" role="status">{{ status }}</p>
     <p v-if="error" class="validation-error" role="alert">{{ error }}</p>
     <GraphCanvas :graph="preview" label="当前输入网络预览" />

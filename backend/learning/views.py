@@ -1,21 +1,31 @@
-"""Anonymous read-only course API plus anonymous laboratory job contracts."""
+"""Public learning and anonymous laboratory APIs."""
 from __future__ import annotations
 
 from typing import Any
 
-from django.http import Http404
+from django.conf import settings
+from django.http import Http404, HttpResponse
 from django.db.models import Q
 from django.utils import timezone
+from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .algorithms import AlgorithmInputError, execute_algorithm
+from .algorithms import AlgorithmInputError, prepare_algorithm_request
 from .algorithms.graph import coerce_finite_float, normalize_graph
 from .contracts import ALGORITHM_REGISTRY, GraphSpec, RunResult
 from .models import Case, CourseModule, PublishStatus, Run
+from .reports import build_report_bundle, render_report_html
+from .run_service import active_cached_run, build_cache_key
+from .safe_imports import UnsafeUploadError, parse_uploaded_graph
+from .tasks import execute_run_job
+from .throttles import (
+    AlgorithmIPThrottle, AlgorithmSessionThrottle,
+    PublicOperationIPThrottle, PublicOperationSessionThrottle,
+)
 
 
 def public_modules():
@@ -110,6 +120,21 @@ def graph_validation(payload: Any) -> tuple[GraphSpec | None, list[dict[str, str
     return normalized, []
 
 
+def graph_shape_error(payload: Any) -> dict[str, str] | None:
+    if not isinstance(payload, dict):
+        return None
+    nodes, edges = payload.get("nodes"), payload.get("edges")
+    if isinstance(nodes, list) and len(nodes) > int(getattr(settings, "PUBLIC_MAX_NODES", 2_000)):
+        return {"code": "limit_exceeded", "message": "公开图最多支持 2,000 个节点。", "path": "nodes"}
+    if isinstance(edges, list) and len(edges) > int(getattr(settings, "PUBLIC_MAX_EDGES", 20_000)):
+        return {"code": "limit_exceeded", "message": "公开图最多支持 20,000 条边。", "path": "edges"}
+    return None
+
+
+def run_payload(run: Run) -> dict[str, Any]:
+    return {"id": str(run.id), "status": run.status, "algorithm": run.algorithm, "seed": run.seed}
+
+
 class ModuleListView(APIView):
     def get(self, request: Request) -> Response:
         return Response([module_payload(module, detail=False) for module in public_modules()])
@@ -140,8 +165,12 @@ class CaseDetailView(APIView):
 
 class GraphValidationView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [PublicOperationIPThrottle, PublicOperationSessionThrottle]
 
     def post(self, request: Request) -> Response:
+        limit_error = graph_shape_error(request.data)
+        if limit_error:
+            return Response({"valid": False, "error": limit_error, "errors": []}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
         graph, errors = graph_validation(request.data)
         if errors:
             return Response({"valid": False, "errors": errors}, status=status.HTTP_400_BAD_REQUEST)
@@ -155,12 +184,17 @@ class AlgorithmListView(APIView):
 
 class RunListView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [AlgorithmIPThrottle, AlgorithmSessionThrottle]
 
     def post(self, request: Request) -> Response:
         if not isinstance(request.data, dict):
             return Response({"detail": "请求体必须是 JSON 对象。"}, status=status.HTTP_400_BAD_REQUEST)
         algorithm = request.data.get("algorithm")
-        graph, errors = graph_validation(request.data.get("graph"))
+        raw_graph = request.data.get("graph")
+        limit_error = graph_shape_error(raw_graph)
+        if limit_error:
+            return Response({"error": limit_error}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        graph, errors = graph_validation(raw_graph)
         parameters = request.data.get("parameters", {})
         if errors:
             return Response({"valid": False, "errors": errors}, status=status.HTTP_400_BAD_REQUEST)
@@ -170,18 +204,50 @@ class RunListView(APIView):
         if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
             return Response({"detail": "seed 必须是整数。"}, status=status.HTTP_400_BAD_REQUEST)
         try:
-            result = execute_algorithm(algorithm, graph, parameters, seed=seed)
+            normalized, resolved, spec, _ = prepare_algorithm_request(algorithm, graph, parameters, seed=seed)
         except AlgorithmInputError as exc:
             return Response({"error": exc.as_dict()}, status=status.HTTP_400_BAD_REQUEST)
+        cache_key = build_cache_key(
+            algorithm=algorithm, version=spec["version"], graph=normalized,
+            parameters=resolved, seed=seed,
+        )
+        cached = active_cached_run(cache_key)
+        now = timezone.now()
         run = Run.objects.create(
             algorithm=algorithm,
-            graph=graph,
+            algorithm_version=spec["version"],
+            graph=normalized,
             parameters=parameters,
+            resolved_parameters=resolved,
             seed=seed,
-            status=Run.Status.COMPLETED,
-            result=result,
+            cache_key=cache_key,
+            cached_from=cached,
+            status=Run.Status.COMPLETED if cached else Run.Status.PENDING,
+            result=cached.result if cached else {},
+            started_at=now if cached else None,
+            finished_at=now if cached else None,
         )
-        return Response({"id": str(run.id), "status": run.status, "algorithm": run.algorithm, "seed": run.seed}, status=status.HTTP_201_CREATED)
+        if not cached:
+            if settings.CELERY_TASK_ALWAYS_EAGER:
+                execute_run_job(str(run.id))
+                run.refresh_from_db()
+                if run.status == Run.Status.FAILED:
+                    return Response({"error": run.error}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                try:
+                    execute_run_job.delay(str(run.id))
+                except Exception:
+                    queue_error = {
+                        "code": "queue_unavailable",
+                        "message": "任务队列暂时不可用，请稍后重试。",
+                        "path": "",
+                    }
+                    run.status = Run.Status.FAILED
+                    run.error = queue_error
+                    run.finished_at = timezone.now()
+                    run.save(update_fields=["status", "error", "finished_at"])
+                    return Response({"error": queue_error}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        return Response(run_payload(run), status=status.HTTP_201_CREATED)
 
 
 class RunStatusView(APIView):
@@ -190,7 +256,7 @@ class RunStatusView(APIView):
             run = active_runs().get(pk=run_id)
         except (Run.DoesNotExist, ValueError) as exc:
             raise Http404 from exc
-        return Response({"id": str(run.id), "status": run.status, "algorithm": run.algorithm, "seed": run.seed})
+        return Response(run_payload(run))
 
 
 class RunResultView(APIView):
@@ -199,6 +265,8 @@ class RunResultView(APIView):
             run = active_runs().get(pk=run_id)
         except (Run.DoesNotExist, ValueError) as exc:
             raise Http404 from exc
+        if run.status != Run.Status.COMPLETED or not run.result:
+            return Response({"id": str(run.id), "status": run.status, "error": run.error}, status=status.HTTP_409_CONFLICT)
         stored = run.result
         result: RunResult = {
             "run_id": str(run.id),
@@ -215,6 +283,7 @@ class RunResultView(APIView):
 
 class ReportView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [PublicOperationIPThrottle, PublicOperationSessionThrottle]
 
     def post(self, request: Request) -> Response:
         if not isinstance(request.data, dict):
@@ -223,8 +292,47 @@ class ReportView(APIView):
             run = active_runs().get(pk=request.data.get("run_id"))
         except (Run.DoesNotExist, ValueError, TypeError) as exc:
             raise Http404 from exc
+        if run.status != Run.Status.COMPLETED or not run.result:
+            return Response({"run_id": str(run.id), "status": run.status}, status=status.HTTP_409_CONFLICT)
         return Response({
             "run_id": str(run.id),
             "format": "html",
-            "content": f"<h1>社会网络分析报告</h1><p>算法：{run.algorithm}</p>",
+            "content": render_report_html(run),
+            "download_url": f"/api/reports/{run.id}/bundle/",
         }, status=status.HTTP_201_CREATED)
+
+
+class ReportBundleView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [PublicOperationIPThrottle, PublicOperationSessionThrottle]
+
+    def get(self, request: Request, run_id: str) -> HttpResponse:
+        try:
+            run = active_runs().get(pk=run_id, status=Run.Status.COMPLETED)
+        except (Run.DoesNotExist, ValueError) as exc:
+            raise Http404 from exc
+        if not run.result:
+            return HttpResponse(status=409)
+        response = HttpResponse(build_report_bundle(run), content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="sna-report-{run.id}.zip"'
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+
+class GraphImportView(APIView):
+    permission_classes = [AllowAny]
+    parser_classes = [MultiPartParser]
+    throttle_classes = [PublicOperationIPThrottle, PublicOperationSessionThrottle]
+
+    def post(self, request: Request) -> Response:
+        uploaded = request.FILES.get("file")
+        if uploaded is None:
+            return Response({"detail": "请选择要导入的图文件。"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            graph = parse_uploaded_graph(uploaded)
+        except UnsafeUploadError as exc:
+            return Response({"detail": str(exc)}, status=exc.status_code)
+        limit_error = graph_shape_error(graph)
+        if limit_error:
+            return Response({"error": limit_error}, status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE)
+        return Response({"valid": True, "graph": graph, "errors": []})

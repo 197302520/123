@@ -29,6 +29,18 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
   return payload
 }
 
+async function requestBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const response = await fetch(path, {
+    ...init,
+    headers: { Accept: 'application/zip', ...init.headers },
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as ErrorPayload
+    throw new Error(payload.detail || `报告下载失败（${response.status}）。`)
+  }
+  return response.blob()
+}
+
 export const fetchModules = () => requestJson<CourseModule[]>('/api/modules/')
 export const fetchModule = (slug: string) => requestJson<CourseModuleDetail>(`/api/modules/${encodeURIComponent(slug)}/`)
 export const fetchCases = () => requestJson<CaseSummary[]>('/api/cases/')
@@ -42,3 +54,4 @@ export const submitRun = (request: RunRequest, signal?: AbortSignal) => requestJ
 })
 export const fetchRunStatus = (id: string, signal?: AbortSignal) => requestJson<RunStatus>(`/api/runs/${encodeURIComponent(id)}/`, { signal })
 export const fetchRunResult = (id: string, signal?: AbortSignal) => requestJson<RunResult>(`/api/runs/${encodeURIComponent(id)}/result/`, { signal })
+export const fetchReportBundle = (id: string, signal?: AbortSignal) => requestBlob(`/api/reports/${encodeURIComponent(id)}/bundle/`, { signal })

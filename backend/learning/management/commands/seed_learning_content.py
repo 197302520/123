@@ -1,5 +1,10 @@
-from django.core.management.base import BaseCommand
+from __future__ import annotations
 
+import networkx as nx
+from django.core.management.base import BaseCommand
+from networkx.algorithms import bipartite
+
+from learning.algorithms.graph import nx_to_graph
 from learning.models import Case, CourseModule, Dataset, PublishStatus
 
 
@@ -14,8 +19,125 @@ MODULES = [
 ]
 
 
+def graph(nodes, edges, *, directed=False):
+    return {
+        "directed": directed,
+        "nodes": [{"id": str(node), "label": str(node)} for node in nodes],
+        "edges": [
+            {"source": str(edge[0]), "target": str(edge[1]), "weight": float(edge[2] if len(edge) > 2 else 1)}
+            for edge in edges
+        ],
+    }
+
+
+def case_definitions():
+    karate_network = nx.karate_club_graph()
+    karate = nx_to_graph(karate_network)
+    karate_attributes = {str(node): {"faction": values["club"]} for node, values in karate_network.nodes(data=True)}
+
+    dolphin_nodes = [f"D{index:02d}" for index in range(1, 13)]
+    dolphin_edges = [
+        ("D01", "D02"), ("D01", "D03"), ("D02", "D03"), ("D02", "D04"),
+        ("D03", "D04"), ("D04", "D05"), ("D05", "D06"), ("D04", "D06"),
+        ("D07", "D08"), ("D07", "D09"), ("D08", "D09"), ("D08", "D10"),
+        ("D09", "D10"), ("D10", "D11"), ("D11", "D12"), ("D10", "D12"),
+        ("D06", "D07"),
+    ]
+    dolphins = graph(dolphin_nodes, dolphin_edges)
+
+    memberships = {
+        "P1": ["C1", "C2"], "P2": ["C1"], "P3": ["C1", "C2"], "P4": ["C2", "C3"],
+        "P5": ["C3"], "P6": ["C3", "C4"], "P7": ["C4"], "P8": ["C2", "C4"],
+    }
+    bipartite_network = nx.Graph()
+    bipartite_network.add_nodes_from(memberships, bipartite="player")
+    clubs = sorted({club for values in memberships.values() for club in values})
+    bipartite_network.add_nodes_from(clubs, bipartite="club")
+    bipartite_network.add_edges_from((player, club) for player, values in memberships.items() for club in values)
+    projection = bipartite.weighted_projected_graph(bipartite_network, sorted(memberships))
+    football_projection = nx_to_graph(projection)
+    football_source = {
+        "directed": False,
+        "nodes": ([{"id": player, "label": player, "kind": "player"} for player in memberships]
+                  + [{"id": club, "label": club, "kind": "club"} for club in clubs]),
+        "edges": [{"source": player, "target": club, "weight": 1.0} for player, values in memberships.items() for club in values],
+    }
+
+    empty_graph = {"directed": True, "nodes": [], "edges": []}
+    enterprise_text = "云帆科技与星河数据建立联合实验室。青松资本投资云帆科技。星河数据向海岳制造提供数据服务。"
+
+    countries = ["中国", "日本", "韩国", "德国", "法国", "意大利"]
+    trade_snapshots = [
+        graph(countries, [("中国", "日本", 4), ("中国", "韩国", 3), ("日本", "韩国", 2), ("德国", "法国", 4), ("法国", "意大利", 3), ("德国", "意大利", 2)]),
+        graph(countries, [("中国", "日本", 4), ("中国", "韩国", 3), ("日本", "德国", 1), ("德国", "法国", 4), ("法国", "意大利", 3), ("韩国", "意大利", 1)]),
+        graph(countries, [("中国", "日本", 3), ("日本", "德国", 2), ("德国", "法国", 4), ("法国", "意大利", 3), ("韩国", "意大利", 2), ("中国", "韩国", 2)]),
+    ]
+
+    people = ["甲", "乙", "丙", "丁", "戊", "己"]
+    opinion_graph = graph(people, [("甲", "乙"), ("乙", "丙"), ("丙", "丁"), ("丁", "戊"), ("戊", "己"), ("乙", "戊", 0.5)])
+
+    papers = [f"paper-{index}" for index in range(1, 9)]
+    citation_graph = graph(papers, [
+        ("paper-2", "paper-1"), ("paper-3", "paper-1"), ("paper-3", "paper-2"),
+        ("paper-4", "paper-2"), ("paper-5", "paper-2"), ("paper-5", "paper-3"),
+        ("paper-6", "paper-3"), ("paper-7", "paper-4"), ("paper-7", "paper-5"),
+        ("paper-8", "paper-5"), ("paper-8", "paper-6"),
+    ], directed=True)
+    citation_attributes = {
+        paper: {"topic": ["神经网络", "概率方法", "图学习"][index % 3], "features": [index % 2, (index + 1) % 2, 1]}
+        for index, paper in enumerate(papers)
+    }
+
+    generated = "仓库内确定性生成的教学数据；未复制外部个体记录。"
+    cc0 = "CC0-1.0（本项目生成数据）"
+    return [
+        {
+            "slug": "zachary-karate", "title": "Zachary 空手道俱乐部", "case_title": "空手道俱乐部网络",
+            "summary": "用经典俱乐部关系检验社区边界。", "module": "communities",
+            "provenance": "Wayne W. Zachary (1977), An Information Flow Model for Conflict and Fission in Small Groups；由 NetworkX karate_club_graph 打包。",
+            "metadata": {"source": "Zachary (1977)；NetworkX 3.x karate_club_graph", "license": "NetworkX BSD-3-Clause；原始事实拓扑按论文完整署名", "cleaning": "节点转为稳定字符串 ID；无向边权保留为数值", "version": "2026.08-v1", "graph": karate, "node_attributes": karate_attributes, "algorithm": "community.louvain", "parameters": {"resolution": 1.0}, "seed": 7},
+        },
+        {
+            "slug": "dolphins", "title": "生成式海豚社交教学网络", "case_title": "海豚社群边界",
+            "summary": "在不暴露原始动物观察记录的合成网络上比较社群。", "module": "communities",
+            "provenance": "教学网络受 Lusseau et al. (2003) 海豚社交研究启发，拓扑由本项目独立生成。",
+            "metadata": {"source": generated, "license": cc0, "cleaning": "生成两个稠密群体与一条桥接关系", "version": "2026.08-v1", "graph": dolphins, "algorithm": "community.lpa", "parameters": {}, "seed": 13},
+        },
+        {
+            "slug": "football-bipartite", "title": "生成式球员—俱乐部二部网络", "case_title": "球员流动与俱乐部投影",
+            "summary": "从球员—俱乐部隶属关系投影出球员共队网络。", "module": "network-basics",
+            "provenance": "本项目生成的虚构球员与俱乐部隶属关系。",
+            "metadata": {"source": generated, "license": cc0, "cleaning": "二部图按共同俱乐部数量执行加权球员投影", "version": "2026.08-v1", "graph": football_projection, "source_graph": football_source, "projection": "networkx weighted_projected_graph(players)", "algorithm": "centrality.degree", "parameters": {}, "seed": 5},
+        },
+        {
+            "slug": "enterprise-text", "title": "生成式企业关系文本", "case_title": "从企业文本抽取关系网络",
+            "summary": "用可校正规则从中文企业叙述生成实体关系候选。", "module": "network-basics",
+            "provenance": "本项目编写的虚构企业语句。",
+            "metadata": {"source": generated, "license": cc0, "cleaning": "NFKC 规范化；保留证据偏移；不含真实企业事实", "version": "2026.08-v1", "graph": empty_graph, "algorithm": "text.extract", "parameters": {"text": enterprise_text, "method": "rule", "embedding": "normalized", "model_path": ""}, "seed": 0},
+        },
+        {
+            "slug": "trade-snapshots", "title": "生成式贸易时间快照", "case_title": "贸易网络中的动态社群",
+            "summary": "比较三个时间快照中的社群延续、分裂与合并。", "module": "dynamic-networks",
+            "provenance": "本项目生成的六国贸易教学快照；权重为虚构课堂数值。",
+            "metadata": {"source": generated, "license": cc0, "cleaning": "统一国家名称；快照均为无向正权图", "version": "2026.08-v1", "graph": trade_snapshots[0], "algorithm": "community.dynamic", "parameters": {"snapshots": trade_snapshots, "snapshot_communities": [], "threshold": 0.3}, "seed": 17},
+        },
+        {
+            "slug": "opinion-dynamics", "title": "生成式课堂意见网络", "case_title": "意见如何在关系中趋同",
+            "summary": "运行 DeGroot 模型观察初始分歧的收敛轨迹。", "module": "diffusion",
+            "provenance": "本项目生成的匿名角色网络与初始意见。",
+            "metadata": {"source": generated, "license": cc0, "cleaning": "角色使用甲乙丙丁戊己；意见缩放到 0–1", "version": "2026.08-v1", "graph": opinion_graph, "algorithm": "opinion.degroot", "parameters": {"opinions": {"甲": 0.1, "乙": 0.2, "丙": 0.35, "丁": 0.7, "戊": 0.85, "己": 0.95}, "max_iterations": 200, "tolerance": 1e-6}, "seed": 23},
+        },
+        {
+            "slug": "cora-citations", "title": "生成式 Cora 风格属性引用网络", "case_title": "属性论文引用与影响力",
+            "summary": "在小型有向引用图上结合主题属性解释 PageRank。", "module": "network-measures",
+            "provenance": "本项目生成的 Cora 风格结构；不复制 Cora 原始论文、标签或特征。",
+            "metadata": {"source": generated, "license": cc0, "cleaning": "虚构 paper ID；三维二值特征与主题标签独立生成", "version": "2026.08-v1", "graph": citation_graph, "node_attributes": citation_attributes, "algorithm": "centrality.pagerank", "parameters": {"alpha": 0.85, "max_iterations": 200, "tolerance": 1e-6}, "seed": 29},
+        },
+    ]
+
+
 class Command(BaseCommand):
-    help = "Seed the seven published teaching modules and core case metadata."
+    help = "Idempotently seed seven modules and seven runnable, provenance-recorded cases."
 
     def handle(self, *args, **options):
         modules: dict[str, CourseModule] = {}
@@ -25,25 +147,21 @@ class Command(BaseCommand):
                 defaults={"title": title, "summary": summary, "order": order, "status": PublishStatus.PUBLISHED},
             )
             modules[slug] = module
-        datasets = {}
-        for slug, title, provenance, metadata in [
-            ("zachary-karate", "Zachary 空手道俱乐部", "Zachary (1977)", {"nodes": 34, "edges": 78}),
-            ("dolphins", "Dolphins 社交网络", "Lusseau et al. (2003)", {"nodes": 62, "edges": 159}),
-        ]:
+        for definition in case_definitions():
             dataset, _ = Dataset.objects.update_or_create(
-                slug=slug,
-                defaults={"title": title, "provenance": provenance, "metadata": metadata, "status": PublishStatus.PUBLISHED},
-            )
-            datasets[slug] = dataset
-        for slug, title, summary, dataset_slug in [
-            ("zachary-karate", "空手道俱乐部网络", "一个经典的社区发现案例。", "zachary-karate"),
-            ("dolphins", "海豚社交网络", "观察海豚之间的社交关系。", "dolphins"),
-        ]:
-            Case.objects.update_or_create(
-                slug=slug,
+                slug=definition["slug"],
                 defaults={
-                    "module": modules["communities"], "dataset": datasets[dataset_slug], "title": title,
-                    "summary": summary, "status": PublishStatus.PUBLISHED,
+                    "title": definition["title"], "provenance": definition["provenance"],
+                    "metadata": definition["metadata"], "status": PublishStatus.PUBLISHED,
                 },
             )
-        self.stdout.write(self.style.SUCCESS("Seeded seven modules and two case metadata records."))
+            Case.objects.update_or_create(
+                slug=definition["slug"],
+                defaults={
+                    "module": modules[definition["module"]], "dataset": dataset,
+                    "title": definition["case_title"], "summary": definition["summary"],
+                    "content": "按问题—数据—方法—运行—解释—反思六步完成案例，并下载复现包核验结论。",
+                    "status": PublishStatus.PUBLISHED,
+                },
+            )
+        self.stdout.write(self.style.SUCCESS("Seeded seven modules and seven runnable case records."))

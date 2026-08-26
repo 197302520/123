@@ -33,6 +33,21 @@ describe('laboratory run state machine', () => {
     expect(fetchRunStatus).toHaveBeenCalledTimes(2)
   })
 
+  test('continues polling while the worker reports a running state', async () => {
+    const fetchRunStatus = vi.fn()
+      .mockResolvedValueOnce({ id: 'run-3', status: 'running', algorithm: 'centrality.degree', seed: 7 })
+      .mockResolvedValueOnce({ id: 'run-3', status: 'completed', algorithm: 'centrality.degree', seed: 7 })
+
+    const result = await executeRun(request, {
+      submitRun: vi.fn().mockResolvedValue({ id: 'run-3', status: 'pending', algorithm: 'centrality.degree', seed: 7 }),
+      fetchRunStatus,
+      fetchRunResult: vi.fn().mockResolvedValue({ ...completedResult, run_id: 'run-3' }),
+    }, () => undefined, { intervalMs: 0 })
+
+    expect(fetchRunStatus).toHaveBeenCalledTimes(2)
+    expect(result.run_id).toBe('run-3')
+  })
+
   test('exposes a recoverable error state when the backend rejects the input', async () => {
     const states: string[] = []
     await expect(executeRun(request, {

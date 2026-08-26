@@ -21,6 +21,7 @@ INSTALLED_APPS = [
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "learning.middleware.TeacherLoginThrottleMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -56,7 +57,16 @@ if os.environ.get("POSTGRES_DB"):
 else:
     DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3"}}
 
-AUTH_PASSWORD_VALIDATORS = []
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator", "OPTIONS": {"min_length": 12}},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
+]
+PASSWORD_HASHERS = [
+    "django.contrib.auth.hashers.ScryptPasswordHasher",
+    "django.contrib.auth.hashers.PBKDF2PasswordHasher",
+]
 LANGUAGE_CODE = "zh-hans"
 TIME_ZONE = "Asia/Shanghai"
 USE_I18N = True
@@ -68,9 +78,38 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ["rest_framework.permissions.IsAuthenticatedOrReadOnly"],
     "DEFAULT_RENDERER_CLASSES": ["rest_framework.renderers.JSONRenderer"],
 }
+if os.environ.get("DJANGO_NUM_PROXIES"):
+    REST_FRAMEWORK["NUM_PROXIES"] = int(os.environ["DJANGO_NUM_PROXIES"])
+
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(20 * 1024 * 1024)))
+DATA_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES
+FILE_UPLOAD_MAX_MEMORY_SIZE = MAX_UPLOAD_BYTES
+PUBLIC_MAX_NODES = int(os.environ.get("PUBLIC_MAX_NODES", "2000"))
+PUBLIC_MAX_EDGES = int(os.environ.get("PUBLIC_MAX_EDGES", "20000"))
+PUBLIC_OPERATION_RATES = {
+    "public": os.environ.get("PUBLIC_OPERATION_RATE", "240/hour"),
+}
+PUBLIC_ALGORITHM_RATES = {
+    "standard": os.environ.get("PUBLIC_STANDARD_ALGORITHM_RATE", "120/hour"),
+    "heavy": os.environ.get("PUBLIC_HEAVY_ALGORITHM_RATE", "30/hour"),
+}
+TEACHER_LOGIN_ATTEMPTS = int(os.environ.get("TEACHER_LOGIN_ATTEMPTS", "5"))
+TEACHER_LOGIN_WINDOW_SECONDS = int(os.environ.get("TEACHER_LOGIN_WINDOW_SECONDS", "900"))
+TRUST_PROXY_HEADERS = os.environ.get("DJANGO_TRUST_PROXY_HEADERS", "0") == "1"
+
+SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL", "0") == "1"
+SESSION_COOKIE_SECURE = SECURE_SSL_REDIRECT
+CSRF_COOKIE_SECURE = SECURE_SSL_REDIRECT
+SECURE_HSTS_SECONDS = int(os.environ.get("DJANGO_HSTS_SECONDS", "31536000" if SECURE_SSL_REDIRECT else "0"))
+SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_SSL_REDIRECT
+SECURE_HSTS_PRELOAD = SECURE_SSL_REDIRECT
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https") if TRUST_PROXY_HEADERS else None
+CSRF_TRUSTED_ORIGINS = [origin for origin in os.environ.get("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if origin]
 
 CELERY_BROKER_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 CELERY_RESULT_BACKEND = CELERY_BROKER_URL
+CELERY_TASK_ALWAYS_EAGER = os.environ.get("CELERY_TASK_ALWAYS_EAGER", "1") == "1"
+CELERY_TASK_EAGER_PROPAGATES = False
 CELERY_BEAT_SCHEDULE = {
     "cleanup-expired-anonymous-runs": {
         "task": "learning.tasks.cleanup_expired_runs",

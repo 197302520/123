@@ -6,6 +6,8 @@ import { completedResult, degreeAlgorithm, exampleGraph, historyRecord } from '.
 
 vi.mock('../api/client', () => ({
   fetchAlgorithms: vi.fn(),
+  fetchCase: vi.fn(),
+  fetchReportBundle: vi.fn(),
   validateGraph: vi.fn(),
   submitRun: vi.fn(),
   fetchRunStatus: vi.fn(),
@@ -17,7 +19,7 @@ vi.mock('../lab/historyStore', () => ({
   deleteHistory: vi.fn(),
   clearHistory: vi.fn(),
 }))
-import { fetchAlgorithms, fetchRunResult, submitRun, validateGraph } from '../api/client'
+import { fetchAlgorithms, fetchCase, fetchReportBundle, fetchRunResult, submitRun, validateGraph } from '../api/client'
 import { clearHistory, deleteHistory, listHistory, saveHistory } from '../lab/historyStore'
 
 const global = { stubs: {
@@ -31,7 +33,15 @@ function renderLab() { return render(LabView, { global }) }
 
 beforeEach(() => {
   vi.clearAllMocks()
+  window.history.replaceState({}, '', '/lab')
   vi.mocked(fetchAlgorithms).mockResolvedValue([degreeAlgorithm])
+  vi.mocked(fetchCase).mockResolvedValue({
+    slug: 'zachary-karate', title: '空手道俱乐部', summary: '案例', module: 'communities', content: '',
+    dataset: { slug: 'zachary-karate', title: 'Zachary', provenance: 'source', metadata: {
+      graph: exampleGraph, algorithm: 'centrality.degree', parameters: { normalized: true }, seed: 19,
+    } },
+  })
+  vi.mocked(fetchReportBundle).mockResolvedValue(new Blob(['zip'], { type: 'application/zip' }))
   vi.mocked(validateGraph).mockResolvedValue({ valid: true, errors: [], graph: exampleGraph })
   vi.mocked(listHistory).mockResolvedValue([])
   vi.mocked(saveHistory).mockResolvedValue(undefined)
@@ -41,6 +51,16 @@ beforeEach(() => {
 })
 
 describe('free laboratory workflow', () => {
+  test('loads a runnable case graph, algorithm, parameters, and seed from the public case endpoint', async () => {
+    window.history.pushState({}, '', '/lab?case=zachary-karate')
+    renderLab()
+
+    expect(await screen.findByText(/已载入案例“空手道俱乐部”/)).toBeVisible()
+    expect(fetchCase).toHaveBeenCalledWith('zachary-karate')
+    expect(screen.getByRole('spinbutton', { name: '随机种子' })).toHaveValue(19)
+    expect((screen.getByRole('textbox', { name: '粘贴图数据' }) as HTMLTextAreaElement).value).toContain('"id": "a"')
+  })
+
   test('invalidates readiness immediately after editing a validated graph and will not submit it', async () => {
     const user = userEvent.setup()
     renderLab()
@@ -89,6 +109,22 @@ describe('free laboratory workflow', () => {
     expect(await screen.findByRole('heading', { name: '分析结果' }, { timeout: 5_000 })).toBeVisible()
     expect(await screen.findByRole('alert', { name: '本机历史错误' })).toHaveTextContent('浏览器配额不足')
     expect(screen.getByText('计算完成，可以查看结果与复现信息。')).toBeVisible()
+  })
+
+  test('downloads the completed backend report bundle instead of rebuilding a JSON-only file', async () => {
+    vi.mocked(submitRun).mockResolvedValue({ id: 'run-1', status: 'completed', algorithm: 'centrality.degree', seed: 7 })
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:report')
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    renderLab()
+    const user = userEvent.setup()
+    await screen.findByRole('option', { name: '度中心性' })
+    await user.click(screen.getByRole('button', { name: '校验图数据' }))
+    await user.click(screen.getByRole('button', { name: '运行真实算法' }))
+    await user.click(await screen.findByRole('button', { name: '下载本次复现包' }))
+
+    expect(fetchReportBundle).toHaveBeenCalledWith('run-1')
+    expect(createObjectURL).toHaveBeenCalledWith(expect.objectContaining({ type: 'application/zip' }))
+    expect(click).toHaveBeenCalled()
   })
 
   test('surfaces load, delete, and clear failures without removing visible records', async () => {

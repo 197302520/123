@@ -23,6 +23,8 @@ npm run dev
 
 Vite 将 `/api` 代理到 `http://localhost:8000`。复制根目录 `.env.example` 为 `.env` 后，可用 `docker compose up --build` 启动 PostgreSQL、Redis、Django web/worker 和 Vue 开发服务器。
 
+生产 Compose、HTTPS、迁移/种子、14 天备份恢复、监控、两小时清理、可选 ML worker 与 90 人容量演练见 [`docs/deployment.md`](docs/deployment.md)。
+
 ## 验证
 
 ```powershell
@@ -30,3 +32,5 @@ python -m pytest backend/tests -q
 python backend/manage.py check
 cd frontend; npm run build
 ```
+
+也可在仓库根目录运行 `python scripts/verify_release.py` 执行带超时的完整发布验证；本机没有 Docker 时，`python scripts/validate_compose.py` 会直接校验生产 Compose 合同。

@@ -85,22 +85,9 @@ def execute_algorithm(
     *,
     seed: int | None = None,
 ) -> dict[str, Any]:
-    if algorithm not in REGISTRY_BY_KEY:
-        raise AlgorithmInputError(f"不支持的算法：{algorithm}。", code="unsupported_algorithm", path="algorithm")
-    if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
-        raise AlgorithmInputError("seed 必须是整数或 null。", path="seed")
-    spec = REGISTRY_BY_KEY[algorithm]
-    normalized = normalize_graph(graph)
-    graph_type = "directed" if normalized["directed"] else "undirected"
-    if graph_type not in spec["supported_graph_types"]:
-        expected = "无向图" if spec["supported_graph_types"] == ["undirected"] else "/".join(spec["supported_graph_types"])
-        raise AlgorithmInputError(f"算法 {algorithm} 仅支持{expected}。", code="unsupported_graph_type", path="graph.directed")
-    if len(normalized["nodes"]) > spec["limits"]["max_nodes"]:
-        raise AlgorithmInputError(f"算法 {algorithm} 最多支持 {spec['limits']['max_nodes']} 个节点。", code="limit_exceeded", path="graph.nodes")
-    if len(normalized["edges"]) > spec["limits"]["max_edges"]:
-        raise AlgorithmInputError(f"算法 {algorithm} 最多支持 {spec['limits']['max_edges']} 条边。", code="limit_exceeded", path="graph.edges")
-    params = _resolve_parameters(spec, {} if parameters is None else parameters)
-    effective_seed = 0 if seed is None else seed
+    normalized, params, spec, effective_seed = prepare_algorithm_request(
+        algorithm, graph, parameters, seed=seed,
+    )
 
     if algorithm in CLASSICAL:
         bundle = _networkx_guard(run_classical, algorithm, normalized, params, effective_seed)
@@ -146,4 +133,31 @@ def execute_algorithm(
     )
 
 
-__all__ = ["AlgorithmInputError", "execute_algorithm", "get_registry"]
+def prepare_algorithm_request(
+    algorithm: str,
+    graph: Any,
+    parameters: Any | None = None,
+    *,
+    seed: int | None = None,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], int]:
+    """Validate and normalize the exact inputs used by execution and cache keys."""
+    if algorithm not in REGISTRY_BY_KEY:
+        raise AlgorithmInputError(f"不支持的算法：{algorithm}。", code="unsupported_algorithm", path="algorithm")
+    if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
+        raise AlgorithmInputError("seed 必须是整数或 null。", path="seed")
+    spec = REGISTRY_BY_KEY[algorithm]
+    normalized = normalize_graph(graph)
+    graph_type = "directed" if normalized["directed"] else "undirected"
+    if graph_type not in spec["supported_graph_types"]:
+        expected = "无向图" if spec["supported_graph_types"] == ["undirected"] else "/".join(spec["supported_graph_types"])
+        raise AlgorithmInputError(f"算法 {algorithm} 仅支持{expected}。", code="unsupported_graph_type", path="graph.directed")
+    if len(normalized["nodes"]) > spec["limits"]["max_nodes"]:
+        raise AlgorithmInputError(f"算法 {algorithm} 最多支持 {spec['limits']['max_nodes']} 个节点。", code="limit_exceeded", path="graph.nodes")
+    if len(normalized["edges"]) > spec["limits"]["max_edges"]:
+        raise AlgorithmInputError(f"算法 {algorithm} 最多支持 {spec['limits']['max_edges']} 条边。", code="limit_exceeded", path="graph.edges")
+    params = _resolve_parameters(spec, {} if parameters is None else parameters)
+    effective_seed = 0 if seed is None else seed
+    return normalized, params, spec, effective_seed
+
+
+__all__ = ["AlgorithmInputError", "execute_algorithm", "get_registry", "prepare_algorithm_request"]

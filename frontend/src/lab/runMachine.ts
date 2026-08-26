@@ -34,12 +34,16 @@ export async function executeRun(
     if (submission.status !== 'completed') {
       onState('polling')
       let status = submission
-      for (let attempt = 0; attempt < maxPolls && status.status === 'pending'; attempt += 1) {
+      for (let attempt = 0; attempt < maxPolls && ['pending', 'running'].includes(status.status); attempt += 1) {
         await delay(intervalMs, options.signal)
         status = await api.fetchRunStatus(submission.id, options.signal)
         ensureActive(options.signal)
       }
-      if (status.status !== 'completed') throw new Error(status.status === 'failed' ? '算法运行失败，请检查输入后重试。' : '等待结果超时，请稍后重试。')
+      if (status.status !== 'completed') throw new Error(
+        status.status === 'failed' ? '算法运行失败，请检查输入后重试。'
+          : status.status === 'cancelled' ? '算法运行已取消。'
+            : '等待结果超时，请稍后重试。',
+      )
     }
     const result = await api.fetchRunResult(submission.id, options.signal)
     ensureActive(options.signal)

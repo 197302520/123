@@ -3,9 +3,12 @@ import katex from 'katex'
 import { computed } from 'vue'
 
 const props = defineProps<{ formula: string }>()
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g, (character) => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+}[character] ?? character))
 const rendered = computed(() => {
   try { return katex.renderToString(props.formula || '\\text{无公式}', { throwOnError: false, displayMode: true }) }
-  catch { return `<span>${props.formula}</span>` }
+  catch { return `<span>${escapeHtml(props.formula)}</span>` }
 })
 </script>
 
