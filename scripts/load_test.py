@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import http.cookiejar
 import json
 import time
 import urllib.error
@@ -15,10 +16,11 @@ GRAPH = {
 }
 
 
-def request_json(url: str, *, payload=None, timeout: float = 10.0):
+def request_json(url: str, *, payload=None, timeout: float = 10.0, opener=None):
     data = None if payload is None else json.dumps(payload).encode()
     request = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json", "Accept": "application/json"})
-    with urllib.request.urlopen(request, timeout=timeout) as response:
+    open_request = opener.open if opener is not None else urllib.request.urlopen
+    with open_request(request, timeout=timeout) as response:
         return json.load(response)
 
 
@@ -28,15 +30,16 @@ def student_payload(index: int) -> dict:
 
 
 def one_student(base_url: str, deadline_seconds: float, index: int) -> str:
-    submitted = request_json(f"{base_url}/api/runs/", payload=student_payload(index))
+    opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+    submitted = request_json(f"{base_url}/api/runs/", payload=student_payload(index), opener=opener)
     deadline = time.monotonic() + deadline_seconds
     state = submitted
     while state["status"] in {"pending", "running"} and time.monotonic() < deadline:
         time.sleep(0.25)
-        state = request_json(f"{base_url}/api/runs/{submitted['id']}/")
+        state = request_json(f"{base_url}/api/runs/{submitted['id']}/", opener=opener)
     if state["status"] != "completed":
         raise RuntimeError(f"run ended as {state['status']}")
-    result = request_json(f"{base_url}/api/runs/{submitted['id']}/result/")
+    result = request_json(f"{base_url}/api/runs/{submitted['id']}/result/", opener=opener)
     if not result.get("tables"):
         raise RuntimeError("completed run returned no tables")
     return submitted["id"]

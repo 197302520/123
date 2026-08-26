@@ -190,6 +190,20 @@ def _parse_xml_graph(data: bytes, suffix: str) -> dict[str, Any]:
             network = nx.read_graphml(io.BytesIO(data))
             if network.is_multigraph():
                 raise UnsafeUploadError("暂不支持多重边图。")
+            for _, node_data in network.nodes(data=True):
+                encoded_attributes = node_data.pop("attributes", None)
+                if encoded_attributes is None:
+                    continue
+                if not isinstance(encoded_attributes, str):
+                    raise UnsafeUploadError("GraphML 节点 attributes 必须是 JSON 对象文本。")
+                try:
+                    decoded_attributes = json.loads(encoded_attributes)
+                except json.JSONDecodeError as exc:
+                    raise UnsafeUploadError("GraphML 节点 attributes 不是有效 JSON。") from exc
+                if not isinstance(decoded_attributes, dict):
+                    raise UnsafeUploadError("GraphML 节点 attributes 必须解码为对象。")
+                for name, value in decoded_attributes.items():
+                    node_data.setdefault(name, value)
             return normalize_graph(nx_to_graph(network))
         root = ET.fromstring(data)
         local = lambda element: element.tag.rsplit("}", 1)[-1]

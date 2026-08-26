@@ -21,6 +21,7 @@ INSTALLED_APPS = [
 ]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "learning.middleware.TeacherLoginThrottleMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "learning.middleware.AnonymousPublicSessionMiddleware",
@@ -72,7 +73,17 @@ LANGUAGE_CODE = "zh-hans"
 TIME_ZONE = "Asia/Shanghai"
 USE_I18N = True
 USE_TZ = True
-STATIC_URL = "static/"
+STATIC_URL = "/static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": (
+            "django.contrib.staticfiles.storage.StaticFilesStorage"
+            if DEBUG else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+        )
+    },
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 REST_FRAMEWORK = {
@@ -97,6 +108,10 @@ PUBLIC_ALGORITHM_RATES = {
 TEACHER_LOGIN_ATTEMPTS = int(os.environ.get("TEACHER_LOGIN_ATTEMPTS", "5"))
 TEACHER_LOGIN_WINDOW_SECONDS = int(os.environ.get("TEACHER_LOGIN_WINDOW_SECONDS", "900"))
 RUN_LEASE_SECONDS = int(os.environ.get("RUN_LEASE_SECONDS", "900"))
+RUN_HEARTBEAT_SECONDS = float(os.environ.get("RUN_HEARTBEAT_SECONDS", "30"))
+PENDING_DELIVERY_SECONDS = int(os.environ.get("PENDING_DELIVERY_SECONDS", "120"))
+MAX_PENDING_REQUEUES = int(os.environ.get("MAX_PENDING_REQUEUES", "3"))
+CELERY_CANCEL_SIGNAL = os.environ.get("CELERY_CANCEL_SIGNAL", "SIGTERM")
 TRUST_PROXY_HEADERS = os.environ.get("DJANGO_TRUST_PROXY_HEADERS", "0") == "1"
 
 CACHE_URL = os.environ.get("CACHE_URL")

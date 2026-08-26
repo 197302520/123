@@ -102,24 +102,25 @@ class TeacherCaseDetailView(APIView):
     permission_classes = [IsAdminUser]
 
     def patch(self, request: Request, slug: str) -> Response:
-        try:
-            case = Case.objects.select_related("module", "dataset").get(slug=slug)
-        except Case.DoesNotExist as exc:
-            raise Http404 from exc
         values, errors = _case_fields(request.data, partial=True)
         if errors:
             return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
-        if "slug" in values and values["slug"] != slug and Case.objects.filter(slug=values["slug"]).exists():
-            return Response({"errors": {"slug": "slug 已存在。"}}, status=status.HTTP_400_BAD_REQUEST)
         try:
             with transaction.atomic():
+                try:
+                    case = Case.objects.select_for_update().select_related("module", "dataset").get(slug=slug)
+                except Case.DoesNotExist as exc:
+                    raise Http404 from exc
+                if "slug" in values and values["slug"] != slug and Case.objects.filter(slug=values["slug"]).exists():
+                    return Response({"errors": {"slug": "slug 已存在。"}}, status=status.HTTP_400_BAD_REQUEST)
                 for name, value in values.items():
                     setattr(case, name, value)
-                case.save()
-                AuditRecord.objects.create(
-                    actor=request.user, action="update", entity_type="case", entity_id=case.slug,
-                    changes={"changed_fields": sorted(values), "status": case.status}, source_ip=client_ip(request),
-                )
+                if values:
+                    case.save(update_fields=sorted(values))
+                    AuditRecord.objects.create(
+                        actor=request.user, action="update", entity_type="case", entity_id=case.slug,
+                        changes={"changed_fields": sorted(values), "status": case.status}, source_ip=client_ip(request),
+                    )
         except IntegrityError:
             return Response({"errors": {"slug": "slug 已存在。"}}, status=status.HTTP_409_CONFLICT)
         return Response(_teacher_case_payload(case))

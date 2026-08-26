@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 import random
+import heapq
+from itertools import islice
 from typing import Any, Callable
 
 import networkx as nx
@@ -89,35 +91,59 @@ def _auc(positive_scores: list[float], negative_scores: list[float]) -> float | 
     return float(wins / (len(positive_scores) * len(negative_scores)))
 
 
+def _reservoir_edges(edges, size: int, rng: random.Random) -> list[tuple[str, str]]:
+    """Uniformly retain at most ``size`` edges without materializing the input."""
+    sample: list[tuple[str, str]] = []
+    for index, (source, target) in enumerate(edges):
+        edge = _ordered_edge(source, target)
+        if index < size:
+            sample.append(edge)
+        else:
+            replacement = rng.randint(0, index)
+            if replacement < size:
+                sample[replacement] = edge
+    return sorted(sample)
+
+
 def run_link_prediction(key: str, graph: dict[str, Any], params: dict[str, Any], seed: int | None) -> dict[str, Any]:
     network = build_nx_graph(graph)
     if len(network) < 3:
         raise AlgorithmInputError("链路预测至少需要 3 个节点。")
     score = _score_function(key)
-    candidates = sorted(nx.non_edges(network), key=lambda edge: (str(edge[0]), str(edge[1])))
-    rows = [
-        {"source": _ordered_edge(source, target)[0], "target": _ordered_edge(source, target)[1], "score": score(network, source, target)}
-        for source, target in candidates
-    ]
-    rows.sort(key=lambda row: (-row["score"], row["source"], row["target"]))
+    candidate_limit = params["candidate_limit"]
+    top_k = min(params["top_k"], candidate_limit)
+    existing_pairs = sum(1 for source, target in network.edges() if source != target)
+    candidate_pairs_total = max(0, len(network) * (len(network) - 1) // 2 - existing_pairs)
+    candidate_network = nx.Graph()
+    candidate_network.add_nodes_from(sorted(network.nodes, key=str))
+    candidate_network.add_edges_from(network.edges())
+
+    def scored_candidates():
+        for source, target in islice(nx.non_edges(candidate_network), candidate_limit):
+            left, right = _ordered_edge(source, target)
+            yield {"source": left, "target": right, "score": score(network, source, target)}
+
+    rows = heapq.nsmallest(
+        top_k, scored_candidates(), key=lambda row: (-row["score"], row["source"], row["target"]),
+    )
+    candidates_evaluated = min(candidate_pairs_total, candidate_limit)
 
     rng = random.Random(seed)
     all_edges = sorted((_ordered_edge(source, target) for source, target in network.edges()), key=lambda edge: edge)
     shuffled = list(all_edges)
     rng.shuffle(shuffled)
     requested = params["test_fraction"]
-    test_count = min(len(all_edges), max(1, round(len(all_edges) * requested))) if requested > 0 and all_edges else 0
+    test_count = min(200, len(all_edges), max(1, round(len(all_edges) * requested))) if requested > 0 and all_edges else 0
     test_edges = sorted(shuffled[:test_count])
     training = network.copy()
     training.remove_edges_from(test_edges)
-    training_edges = sorted((_ordered_edge(source, target) for source, target in training.edges()), key=lambda edge: edge)
+    training_edge_count = training.number_of_edges()
+    training_edges = sorted((_ordered_edge(source, target) for source, target in training.edges()), key=lambda edge: edge)[:200]
     positive_scores = [score(training, source, target) for source, target in test_edges]
-    negative_candidates = sorted(
-        (_ordered_edge(source, target) for source, target in nx.non_edges(network)),
-        key=lambda edge: edge,
-    )
-    rng.shuffle(negative_candidates)
-    negatives = sorted(negative_candidates[:max(1, len(test_edges))]) if test_edges else []
+    negative_sample_size = min(200, max(1, len(test_edges)))
+    negatives = _reservoir_edges(
+        islice(nx.non_edges(candidate_network), candidate_limit), negative_sample_size, rng,
+    ) if test_edges else []
     negative_scores = [score(training, source, target) for source, target in negatives]
     auc = _auc(positive_scores, negative_scores)
     warnings = []
@@ -134,7 +160,13 @@ def run_link_prediction(key: str, graph: dict[str, Any], params: dict[str, Any],
                 "test_edges_hidden_before_scoring": True,
                 "test_edges": [list(edge) for edge in test_edges],
                 "training_edges": [list(edge) for edge in training_edges],
+                "training_edge_count": training_edge_count,
                 "negative_edges": [list(edge) for edge in negatives],
+                "candidate_limit": candidate_limit,
+                "top_k": top_k,
+                "candidates_evaluated": candidates_evaluated,
+                "candidate_pairs_total": candidate_pairs_total,
+                "candidate_pairs_truncated": candidates_evaluated < candidate_pairs_total,
             }
         },
     }

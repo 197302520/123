@@ -8,12 +8,15 @@ import pytest
 from django.apps import apps
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.management import call_command
 from django.test import RequestFactory
 from rest_framework.test import APIClient
 
 from learning.models import Case, CourseModule, Dataset, PublishStatus, Run
 from learning.admin import CaseAdmin
+from learning.algorithms import execute_algorithm, export_graph
+from learning.safe_imports import parse_uploaded_graph
 
 
 @pytest.fixture
@@ -110,6 +113,34 @@ def test_anonymous_case_to_algorithm_to_downloadable_report_bundle_is_end_to_end
         assert all("'" + label in exported_labels for label in dangerous_labels)
         ET.fromstring(archive.read("graph.graphml"))
         assert json.loads(archive.read("result.json"))["provenance"]["algorithm"] == dataset["algorithm"]
+
+
+def test_graphml_export_import_roundtrip_preserves_citation_features_for_attributed_ae():
+    """GraphML reproducibility must not silently turn the features vector into a nested JSON string."""
+    graph = {
+        "directed": True,
+        "nodes": [
+            {"id": "p0", "attributes": {"features": [1, 0], "topic": "networks"}},
+            {"id": "p1", "attributes": {"features": [0, 1], "topic": "learning"}},
+            {"id": "p2", "attributes": {"features": [1, 1], "topic": "hybrid"}},
+            {"id": "p3", "attributes": {"features": [0, 0], "topic": "baseline"}},
+        ],
+        "edges": [
+            {"source": "p0", "target": "p1"}, {"source": "p1", "target": "p2"},
+            {"source": "p2", "target": "p3"},
+        ],
+    }
+    graphml = export_graph(graph, "graphml")["content"].encode("utf-8")
+    imported = parse_uploaded_graph(SimpleUploadedFile(
+        "citations.graphml", graphml, content_type="application/graphml+xml",
+    ))
+
+    assert [node["attributes"] for node in imported["nodes"]] == [node["attributes"] for node in graph["nodes"]]
+    result = execute_algorithm(
+        "embedding.ae", imported,
+        {"clusters": 2, "embedding_dim": 2, "epochs": 2, "learning_rate": 0.01}, seed=7,
+    )
+    assert result["provenance"]["node_attribute_dimensions"] == 2
 
 
 @pytest.mark.django_db

@@ -15,6 +15,10 @@ HEAVY_ALGORITHMS = {
     "embedding.cnn",
     "embedding.gcn",
     "embedding.gat",
+    "link_prediction.common_neighbors",
+    "link_prediction.jaccard",
+    "link_prediction.adamic_adar",
+    "link_prediction.resource_allocation",
 }
 
 

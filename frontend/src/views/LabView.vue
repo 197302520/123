@@ -40,6 +40,10 @@ const parametersValid = ref(true)
 const caseMessage = ref('')
 const caseLoadError = ref('')
 const reportDownloading = ref(false)
+const cancellationRunId = ref<string | null>(null)
+const cancellationMessage = ref('')
+const cancellationError = ref('')
+const cancellationInFlight = ref(false)
 let activeRunController: AbortController | null = null
 let activeRunId: string | null = null
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
@@ -134,12 +138,32 @@ async function run() {
   }
 }
 
+async function requestCancellation(runId: string) {
+  cancellationRunId.value = runId
+  cancellationMessage.value = ''
+  cancellationError.value = ''
+  cancellationInFlight.value = true
+  try {
+    await cancelRun(runId)
+    cancellationMessage.value = `已取消任务 ${runId}`
+  } catch (reason) {
+    const detail = reason instanceof Error ? reason.message : '取消请求发送失败'
+    cancellationError.value = `任务 ${runId}：${detail}`
+  } finally {
+    cancellationInFlight.value = false
+  }
+}
+
 function cancelActiveRun() {
   const runId = activeRunId
   activeRunId = null
   activeRunController?.abort()
   activeRunController = null
-  if (runId) void cancelRun(runId).catch(() => undefined)
+  if (runId) void requestCancellation(runId)
+}
+
+function retryCancellation() {
+  if (cancellationRunId.value && !cancellationInFlight.value) void requestCancellation(cancellationRunId.value)
 }
 
 function resetExperiment() {
@@ -212,6 +236,13 @@ const categoryName = (key: string) => ({ graph: '图结构', model: '随机模�
           <div><RunStatus :phase="phase" :message="runError" /><button type="button" class="button primary run-button" :disabled="!canRun" @click="run">{{ running ? '正在提交…' : '运行真实算法' }}</button><p v-if="!graphReady" class="field-help">先在第一步通过图数据校验。</p></div>
         </section>
         <p v-if="runError" class="validation-error" role="alert">{{ runError }}</p>
+        <p v-if="cancellationMessage" class="state-message compact" role="status" aria-label="取消状态">{{ cancellationMessage }}</p>
+        <div v-if="cancellationError" class="state-message compact error" role="alert" aria-label="取消错误">
+          <p>{{ cancellationError }}</p>
+          <button type="button" class="button secondary" :disabled="cancellationInFlight" @click="retryCancellation">
+            {{ cancellationInFlight ? '正在重试…' : '重试取消任务' }}
+          </button>
+        </div>
 
         <div v-if="result" class="result-actions"><button type="button" class="button secondary" @click="downloadBundle" :disabled="!currentRecord || reportDownloading">{{ reportDownloading ? '正在打包…' : '下载本次复现包' }}</button><p>服务器生成 HTML、JSON、CSV 与 GraphML 完整复现包。</p></div>
         <ResultsPanel v-if="result" :result="result" :current-record="currentRecord" :compare-record="compareRecord" />

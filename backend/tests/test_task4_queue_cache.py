@@ -1,5 +1,6 @@
 from unittest.mock import patch
 from datetime import timedelta
+import time
 
 import pytest
 from celery import current_app
@@ -182,12 +183,13 @@ def test_running_cancellation_wins_the_worker_result_race(api_client, monkeypatc
         return {"tables": [{"key": "late-result"}]}
 
     monkeypatch.setattr(tasks, "execute_algorithm", cancel_during_compute)
-    with patch.object(current_app.control, "revoke"):
+    with patch.object(current_app.control, "revoke") as revoke:
         state = tasks.execute_run_job(str(run.id))
 
     run.refresh_from_db()
     assert state == Run.Status.CANCELLED
     assert run.status == Run.Status.CANCELLED and run.result == {}
+    revoke.assert_called_once_with(run.task_id, terminate=True, signal="SIGTERM")
 
 
 @pytest.mark.django_db
@@ -219,6 +221,7 @@ def test_cleanup_marks_stale_running_jobs_failed_instead_of_leaving_them_forever
     stale = Run.objects.create(
         algorithm="centrality.pagerank", graph=PATH3, parameters={}, status=Run.Status.RUNNING,
         started_at=timezone.now() - timedelta(seconds=61),
+        lease_expires_at=timezone.now() - timedelta(seconds=1),
     )
 
     tasks.cleanup_expired_runs()
@@ -271,3 +274,103 @@ def test_unexpected_worker_error_logs_sanitized_trace_with_run_identifiers(caplo
 
     assert str(run.id) in caplog.text and "worker-log-task" in caplog.text and "centrality.pagerank" in caplog.text
     assert "GRAPH-CONTENT-SECRET" not in caplog.text
+    record = next(record for record in caplog.records if record.name == "learning.tasks")
+    assert record.exc_info is not None
+    assert record.exc_info[2].tb_frame.f_code.co_name == "execute_run_job"
+
+
+@pytest.mark.django_db
+def test_failed_running_revoke_is_visible_and_retryable_without_reviving_the_run(api_client):
+    """A broker revoke failure cannot be silently reported as a successful stop."""
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        status=Run.Status.RUNNING, started_at=timezone.now(), task_id="running-revoke-task",
+    )
+    assert hasattr(run, "cancel_revoke_pending"), "Run must persist a cancellation-delivery flag"
+    with patch.object(current_app.control, "revoke", side_effect=RuntimeError("redis://secret@broker")):
+        failed = api_client.post(f"/api/runs/{run.id}/cancel/", {}, format="json")
+
+    run.refresh_from_db()
+    assert failed.status_code == 503
+    assert failed.json()["status"] == Run.Status.CANCELLED
+    assert "secret" not in failed.content.decode()
+    assert run.status == Run.Status.CANCELLED and run.cancel_revoke_pending is True
+
+    with patch.object(current_app.control, "revoke") as revoke:
+        retried = api_client.post(f"/api/runs/{run.id}/cancel/", {}, format="json")
+    run.refresh_from_db()
+    assert retried.status_code == 200 and retried.json()["status"] == Run.Status.CANCELLED
+    assert run.cancel_revoke_pending is False
+    revoke.assert_called_once_with(run.task_id, terminate=True, signal="SIGTERM")
+
+
+@pytest.mark.django_db(transaction=True)
+@override_settings(RUN_LEASE_SECONDS=60, RUN_HEARTBEAT_SECONDS=0.01)
+def test_running_worker_renews_its_lease_while_algorithm_is_active(monkeypatch):
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="heartbeat-task",
+    )
+    assert hasattr(run, "lease_expires_at"), "Run must persist a renewable worker lease"
+    observed: list[bool] = []
+
+    def wait_for_heartbeat(*args, **kwargs):
+        initial = Run.objects.get(pk=run.id).lease_expires_at
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            current = Run.objects.get(pk=run.id)
+            if current.lease_expires_at and initial and current.lease_expires_at > initial:
+                observed.append(True)
+                break
+            time.sleep(0.02)
+        return {"tables": [{"key": "heartbeat"}]}
+
+    monkeypatch.setattr(tasks, "execute_algorithm", wait_for_heartbeat)
+    assert tasks.execute_run_job(str(run.id)) == Run.Status.COMPLETED
+    assert observed == [True]
+
+
+@pytest.mark.django_db
+@override_settings(RUN_LEASE_SECONDS=1, RUN_HEARTBEAT_SECONDS=3600)
+def test_cleanup_lease_failure_wins_against_late_worker_completion(monkeypatch):
+    """A worker returning after its expired lease was reclaimed must discard the late result."""
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="late-worker-task",
+    )
+    assert hasattr(run, "lease_expires_at"), "Run must persist a renewable worker lease"
+
+    def expire_then_finish(*args, **kwargs):
+        Run.objects.filter(pk=run.id).update(lease_expires_at=timezone.now() - timedelta(seconds=1))
+        tasks.cleanup_expired_runs()
+        return {"tables": [{"key": "late-result"}]}
+
+    monkeypatch.setattr(tasks, "execute_algorithm", expire_then_finish)
+    assert tasks.execute_run_job(str(run.id)) == Run.Status.FAILED
+    run.refresh_from_db()
+    assert run.status == Run.Status.FAILED
+    assert run.error["code"] == "worker_lease_expired"
+    assert run.result == {}
+
+
+@pytest.mark.django_db
+@override_settings(CELERY_TASK_ALWAYS_EAGER=False, PENDING_DELIVERY_SECONDS=30)
+def test_cleanup_requeues_one_stale_pending_delivery_and_duplicate_delivery_is_claim_guarded(monkeypatch):
+    run = Run.objects.create(
+        algorithm="centrality.pagerank", graph=PATH3, parameters={}, resolved_parameters={}, seed=7,
+        task_id="stale-pending-task",
+    )
+    assert hasattr(run, "queued_at") and hasattr(run, "requeue_count"), "Pending delivery recovery needs claim metadata"
+    Run.objects.filter(pk=run.id).update(queued_at=timezone.now() - timedelta(seconds=31))
+    with patch.object(tasks.execute_run_job, "apply_async") as enqueue:
+        tasks.cleanup_expired_runs()
+        tasks.cleanup_expired_runs()
+
+    run.refresh_from_db()
+    assert run.status == Run.Status.PENDING and run.requeue_count == 1
+    enqueue.assert_called_once_with(args=[str(run.id)], task_id=run.task_id, queue="default")
+
+    with patch.object(tasks, "execute_algorithm", return_value={"tables": [{"key": "once"}]}) as algorithm:
+        assert tasks.execute_run_job(str(run.id)) == Run.Status.COMPLETED
+        assert tasks.execute_run_job(str(run.id)) == Run.Status.COMPLETED
+    algorithm.assert_called_once()

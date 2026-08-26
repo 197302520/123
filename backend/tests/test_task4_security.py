@@ -10,7 +10,8 @@ from django.contrib.sessions.backends.db import SessionStore
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.db import IntegrityError
+from django.db import IntegrityError, connection
+from django.db.models.query import QuerySet
 from django.test import RequestFactory, override_settings
 from rest_framework.test import APIClient
 from openpyxl import Workbook
@@ -94,6 +95,25 @@ def test_run_throttles_are_isolated_by_ip_session_and_algorithm_category(api_cli
     assert api_client.post("/api/runs/", standard, format="json").status_code == 429
     assert api_client.post("/api/runs/", heavy, format="json").status_code == 201
     assert api_client.post("/api/runs/", heavy, format="json").status_code == 429
+
+
+@pytest.mark.django_db
+@override_settings(PUBLIC_ALGORITHM_RATES={"standard": "10/minute", "heavy": "1/minute"})
+def test_every_link_prediction_algorithm_uses_the_heavy_throttle_bucket(api_client):
+    """Quadratic candidate spaces must never receive the permissive standard rate."""
+    graph = {
+        "directed": False,
+        "nodes": [{"id": "a"}, {"id": "b"}, {"id": "c"}],
+        "edges": [{"source": "a", "target": "b"}],
+    }
+    for algorithm in (
+        "link_prediction.common_neighbors", "link_prediction.jaccard",
+        "link_prediction.adamic_adar", "link_prediction.resource_allocation",
+    ):
+        cache.clear()
+        payload = {"algorithm": algorithm, "graph": graph, "parameters": {}, "seed": 1}
+        assert api_client.post("/api/runs/", payload, format="json").status_code == 201
+        assert api_client.post("/api/runs/", {**payload, "seed": 2}, format="json").status_code == 429
 
 
 @pytest.mark.django_db
@@ -386,3 +406,42 @@ def test_teacher_case_uniqueness_race_returns_conflict_without_partial_audit(api
     assert response.status_code == 409
     assert response.json()["errors"]["slug"] == "slug 已存在。"
     assert not Case.objects.filter(slug="racing-case").exists()
+
+
+@pytest.mark.django_db
+def test_teacher_patch_locks_and_refetches_inside_transaction_with_controlled_update_fields(api_client, monkeypatch):
+    """A stale object fetched before the transaction can lose another teacher's update."""
+    from django.core.management import call_command
+
+    call_command("seed_learning_content")
+    teacher = get_user_model().objects.create_user(
+        username="locked-teacher", password="Strong-Teacher-Passphrase-2026!", is_staff=True,
+    )
+    api_client.force_authenticate(teacher)
+    lock_states: list[bool] = []
+    saved_fields: list[set[str] | None] = []
+    original_lock = QuerySet.select_for_update
+    original_save = Case.save
+
+    def tracked_lock(queryset, *args, **kwargs):
+        if queryset.model is Case:
+            lock_states.append(connection.in_atomic_block)
+        return original_lock(queryset, *args, **kwargs)
+
+    def tracked_save(instance, *args, **kwargs):
+        if instance.slug == "zachary-karate":
+            update_fields = kwargs.get("update_fields")
+            saved_fields.append(set(update_fields) if update_fields is not None else None)
+        return original_save(instance, *args, **kwargs)
+
+    monkeypatch.setattr(QuerySet, "select_for_update", tracked_lock)
+    monkeypatch.setattr(Case, "save", tracked_save)
+    response = api_client.patch("/api/teacher/cases/zachary-karate/", {
+        "summary": "并发安全的摘要", "module_id": 999, "unexpected": "ignored",
+    }, format="json")
+
+    assert response.status_code == 200
+    assert lock_states == [True]
+    assert saved_fields == [{"summary"}]
+    case = Case.objects.get(slug="zachary-karate")
+    assert case.summary == "并发安全的摘要"

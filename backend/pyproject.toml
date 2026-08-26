@@ -9,6 +9,7 @@ dependencies = [
     "psycopg[binary]>=3.2,<3.3",
     "celery[redis]>=5.4,<5.5",
     "gunicorn>=23,<24",
+    "whitenoise>=6.8,<7",
     "openpyxl>=3.1,<4",
     "networkx>=3.4,<3.5; python_version < '3.11'",
     "networkx>=3.4,<4; python_version >= '3.11'",

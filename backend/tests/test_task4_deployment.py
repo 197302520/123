@@ -2,8 +2,13 @@ import subprocess
 import sys
 import os
 from pathlib import Path
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from threading import Thread
 
+import pytest
 import yaml
+from django.core.management import call_command
+from django.test import Client, override_settings
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,7 +25,7 @@ def test_production_compose_separates_worker_scheduler_and_declares_optional_ml_
     assert "ml" in compose["ml-worker"]["profiles"]
     assert compose["backup"]["environment"]["BACKUP_RETENTION_DAYS"] == "14"
     assert compose["web"]["environment"]["DJANGO_TRUST_PROXY_HEADERS"] == "1"
-    assert compose["web"]["environment"]["DJANGO_NUM_PROXIES"] == "1"
+    assert compose["web"]["environment"]["DJANGO_NUM_PROXIES"] == "${DJANGO_NUM_PROXIES:-1}"
     assert compose["frontend"]["ports"] == ["127.0.0.1:8080:80"]
     assert compose["web"]["environment"]["CACHE_URL"] == "redis://redis:6379/1"
     assert "--queues=default" in compose["worker"]["command"]
@@ -92,3 +97,69 @@ def test_load_plan_assigns_a_distinct_real_cache_key_to_every_student():
     payloads = [student_payload(index) for index in range(90)]
     assert len({payload["seed"] for payload in payloads}) == 90
     assert all(payload["algorithm"] == "centrality.degree" and payload["graph"]["edges"] for payload in payloads)
+
+
+@pytest.mark.django_db
+def test_production_image_collects_and_serves_styled_django_admin_static(tmp_path):
+    """The teacher admin must not ship as an unstyled page in the production image."""
+    dockerfile = (ROOT / "backend" / "Dockerfile").read_text(encoding="utf-8")
+    nginx = (ROOT / "frontend" / "nginx.conf").read_text(encoding="utf-8")
+    assert "collectstatic --noinput" in dockerfile
+    assert "location /static/" in nginx
+    assert "proxy_pass http://web:8000;" in nginx.split("location /static/", 1)[1].split("}", 1)[0]
+
+    with override_settings(
+        DEBUG=False,
+        STATIC_ROOT=tmp_path,
+        STORAGES={
+            "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+            "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+        },
+    ):
+        call_command("collectstatic", "--noinput", verbosity=0)
+        response = Client().get("/static/admin/css/base.css")
+
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("text/css")
+    assert len(b"".join(response.streaming_content)) > 1_000
+
+
+def test_load_student_keeps_one_anonymous_session_cookie_for_submit_status_and_result():
+    """A new cookie on every request would not exercise the production session throttle realistically."""
+    from scripts import load_test
+
+    observed_cookies: list[str] = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format, *args):
+            return
+
+        def _json(self, payload, *, cookie=None):
+            encoded = __import__("json").dumps(payload).encode()
+            self.send_response(200 if self.command == "GET" else 201)
+            self.send_header("Content-Type", "application/json")
+            if cookie:
+                self.send_header("Set-Cookie", cookie)
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def do_POST(self):
+            self._json({"id": "run-cookie", "status": "completed"}, cookie="sessionid=student-session; Path=/")
+
+        def do_GET(self):
+            observed_cookies.append(self.headers.get("Cookie", ""))
+            self._json({"tables": [{"key": "result"}]})
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        run_id = load_test.one_student(f"http://127.0.0.1:{server.server_port}", 2, 0)
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert run_id == "run-cookie"
+    assert observed_cookies == ["sessionid=student-session"]

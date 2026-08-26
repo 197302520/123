@@ -127,7 +127,21 @@ for key, name, formula, limitation in [
     ("link_prediction.adamic_adar", "Adamic–Adar", "s=Σ_z 1/log k_z", "度为 1 的共同邻居无法贡献"),
     ("link_prediction.resource_allocation", "资源分配 RA", "s=Σ_z 1/k_z", "只利用二阶局部结构"),
 ]:
-    ALGORITHM_REGISTRY.append(spec(key, name, formula, "对尚未相连的节点对计算局部相似度，并用先隐藏测试边的 AUC 评估。", ["无监督、可解释"], [limitation], graph_types=["undirected"], parameters={"test_fraction": parameter("number", 0.2, "AUC 留出边比例。", minimum=0, maximum=0.8)}))
+    ALGORITHM_REGISTRY.append(spec(
+        key, name, formula,
+        "对尚未相连的节点对计算局部相似度，并用先隐藏测试边的 AUC 评估。",
+        ["无监督、可解释"], [limitation], graph_types=["undirected"],
+        parameters={
+            "test_fraction": parameter("number", 0.2, "AUC 留出边比例。", minimum=0, maximum=0.8),
+            "candidate_limit": parameter(
+                "integer", 10_000, "本次最多流式评分的候选节点对。", minimum=1, maximum=50_000,
+            ),
+            "top_k": parameter(
+                "integer", 100, "结果中保留的最高分候选链路数。", minimum=1, maximum=500,
+            ),
+        },
+        max_nodes=500, max_edges=5_000, version="1.1",
+    ))
 
 
 opinion_specs = [

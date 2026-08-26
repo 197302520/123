@@ -248,5 +248,31 @@ describe('free laboratory workflow', () => {
     await user.click(screen.getByRole('button', { name: '重置整个实验' }))
 
     await waitFor(() => expect(cancelRun).toHaveBeenCalledWith('run-1'))
+    expect(await screen.findByRole('status', { name: '取消状态' })).toHaveTextContent('已取消任务 run-1')
+  })
+
+  test('keeps a cancelled run id visible and lets the learner retry a failed cancellation', async () => {
+    vi.mocked(submitRun).mockResolvedValue({ id: 'run-1', status: 'pending', algorithm: 'centrality.degree', seed: 7 })
+    vi.mocked(fetchRunStatus).mockImplementation((_id, signal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    }))
+    vi.mocked(cancelRun).mockRejectedValueOnce(new Error('取消请求发送失败'))
+    const user = userEvent.setup()
+    renderLab()
+    await screen.findByRole('option', { name: '度中心性' })
+    await user.click(screen.getByRole('button', { name: '校验图数据' }))
+    await user.click(screen.getByRole('button', { name: '运行真实算法' }))
+    await screen.findByText('算法正在计算，正在轮询结果…')
+
+    await user.click(screen.getByRole('button', { name: '重置整个实验' }))
+    expect(await screen.findByRole('alert', { name: '取消错误' })).toHaveTextContent('取消请求发送失败')
+    expect(screen.getByRole('alert', { name: '取消错误' })).toHaveTextContent('run-1')
+
+    vi.mocked(cancelRun).mockResolvedValue({ id: 'run-1', status: 'cancelled', algorithm: 'centrality.degree', seed: 7 })
+    await user.click(screen.getByRole('button', { name: '重试取消任务' }))
+
+    await waitFor(() => expect(cancelRun).toHaveBeenCalledTimes(2))
+    expect(await screen.findByRole('status', { name: '取消状态' })).toHaveTextContent('已取消任务 run-1')
+    expect(screen.queryByRole('button', { name: '重试取消任务' })).not.toBeInTheDocument()
   })
 })

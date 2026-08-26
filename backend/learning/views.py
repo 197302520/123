@@ -25,7 +25,7 @@ from .logging_utils import log_sanitized_exception
 from .reports import build_report_bundle, render_report_html
 from .run_service import active_cached_run, build_cache_key
 from .safe_imports import UnsafeUploadError, parse_uploaded_graph
-from .tasks import execute_run_job
+from .tasks import execute_run_job, queue_for_algorithm
 from .throttles import (
     AlgorithmIPThrottle, AlgorithmSessionThrottle,
     PublicOperationIPThrottle, PublicOperationSessionThrottle,
@@ -33,10 +33,6 @@ from .throttles import (
 
 
 logger = logging.getLogger(__name__)
-
-
-def queue_for_algorithm(algorithm: str) -> str:
-    return "ml" if algorithm in {"embedding.gcn", "embedding.gat"} else "default"
 
 
 def public_modules():
@@ -281,29 +277,49 @@ class RunCancelView(APIView):
     throttle_classes = [PublicOperationIPThrottle, PublicOperationSessionThrottle]
 
     def post(self, request: Request, run_id: str) -> Response:
+        terminate = False
         try:
             with transaction.atomic():
                 run = Run.objects.select_for_update().filter(expires_at__gt=timezone.now()).get(pk=run_id)
                 if run.status == Run.Status.CANCELLED:
-                    return Response(run_payload(run))
-                if run.status not in {Run.Status.PENDING, Run.Status.RUNNING}:
+                    if not run.cancel_revoke_pending or not run.task_id:
+                        return Response(run_payload(run))
+                    terminate = run.started_at is not None
+                elif run.status not in {Run.Status.PENDING, Run.Status.RUNNING}:
                     return Response(run_payload(run), status=status.HTTP_409_CONFLICT)
-                run.status = Run.Status.CANCELLED
-                run.result = {}
-                run.error = {"code": "cancelled", "message": "任务已取消。", "path": ""}
-                run.finished_at = timezone.now()
-                run.save(update_fields=["status", "result", "error", "finished_at"])
+                else:
+                    terminate = run.status == Run.Status.RUNNING
+                    run.status = Run.Status.CANCELLED
+                    run.result = {}
+                    run.error = {"code": "cancelled", "message": "任务已取消。", "path": ""}
+                    run.finished_at = timezone.now()
+                    run.lease_expires_at = None
+                    run.cancel_revoke_pending = bool(run.task_id)
+                    run.save(update_fields=[
+                        "status", "result", "error", "finished_at", "lease_expires_at", "cancel_revoke_pending",
+                    ])
                 task_id = run.task_id
         except (Run.DoesNotExist, ValueError) as exc:
             raise Http404 from exc
         if task_id:
             try:
-                current_app.control.revoke(task_id, terminate=False)
+                if terminate:
+                    current_app.control.revoke(
+                        task_id, terminate=True, signal=getattr(settings, "CELERY_CANCEL_SIGNAL", "SIGTERM"),
+                    )
+                else:
+                    current_app.control.revoke(task_id, terminate=False)
             except Exception as exc:
                 log_sanitized_exception(
                     logger, "Queue revoke failed run_id=%s task_id=%s algorithm=%s",
                     str(run.id), task_id, run.algorithm, exc=exc,
                 )
+                return Response({
+                    **run_payload(run),
+                    "error": {"code": "cancel_delivery_failed", "message": "任务已标记取消，但未能联系队列，请重试取消。"},
+                }, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+            Run.objects.filter(pk=run.id, status=Run.Status.CANCELLED).update(cancel_revoke_pending=False)
+            run.cancel_revoke_pending = False
         return Response(run_payload(run))
 
 

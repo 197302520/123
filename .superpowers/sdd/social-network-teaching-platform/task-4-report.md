@@ -206,3 +206,84 @@ no whitespace errors (only repository LF-to-CRLF notices)
 - Docker is unavailable locally, so live outer-proxy, Redis multi-process, Celery revoke/redelivery, PostgreSQL transactional restore, optional ML image, and 90-student capacity behavior remain staging checks; executable settings/header/Compose/script contracts cover them locally and no container execution is claimed.
 - Vite still reports the pre-existing nonfatal lazy `ResultsPanel` chunk warning (608.76 kB minified / 207.24 kB gzip).
 - Review changes span backend settings/models/migration/auth/throttles/queue/tasks/parsers/graph attributes/embeddings/reports/seeds/tests, frontend API/editor/run cancellation/history naming/tests, and production Nginx/Compose/env/restore/load/docs. Unrelated `extract_docx.py`, `说明书_提取.txt`, and `.mimosa` remain untouched and unstaged.
+
+## Second review-fix appendix — 2026-08-26
+
+This appendix records the queue/link-prediction re-review and supersedes the earlier cancellation/lease wording above.
+
+### Corrective contracts
+
+- **Bounded link prediction:** all four `link_prediction.*` algorithms are heavy-throttle work, registry version 1.1, and accept explicit `candidate_limit` (1–50,000) plus `top_k` (1–500). Their public shape is materially lower at 500 nodes/5,000 edges, so a 2,000-node sparse graph is rejected before the quadratic candidate space is entered. Candidate scoring consumes at most `candidate_limit` nonedges and keeps only `top_k` records with a bounded heap. AUC positives, negatives, and stored training-edge evidence are capped at 200; provenance records total/evaluated/truncated candidate counts and only bounded samples.
+- **Renewable queue leases:** a worker claims a run with one conditional `pending`→`running` update, sets `lease_expires_at`, and renews only its matching running row from a content-free heartbeat thread. Success and failure use conditional `running`→terminal writes, so cleanup, cancellation, or another terminal outcome always wins against late completion/error. Beat fails expired leases, boundedly re-enqueues stale pending deliveries with the original task ID/queue and an atomic `queued_at` claim, and ends repeatedly undeliverable jobs after `MAX_PENDING_REQUEUES`. Duplicate deliveries execute the algorithm once.
+- **Real cancellation:** cancelling pending work uses non-terminating revoke because the database claim already prevents execution. Cancelling running work persists `cancelled`, clears its lease/result, and asks Celery to revoke with `terminate=True` and configurable safe `SIGTERM`; the worker cannot overwrite the terminal state. A failed broker revoke returns a generic 503, retains `cancel_revoke_pending`, and can be retried idempotently. The laboratory keeps the cancelled run ID/status visible, surfaces cancellation failure, offers “重试取消任务”, and remains reset/re-run capable.
+- **Reproducible attributes:** GraphML import now decodes the exporter’s node `attributes` JSON object instead of nesting it as a string. Export→import→AE testing proves citation `features` remain numeric and are consumed as two attribute dimensions.
+- **Teacher/admin production boundary:** teacher PATCH parses only controlled fields, then refetches the case with `select_for_update()` inside the mutation transaction, saves only `update_fields`, and writes its audit in that transaction. The production image collects hashed admin static assets with WhiteNoise, and inner Nginx sends `/static/` to Django while preserving validated outer proxy headers. Compose passes `${DJANGO_NUM_PROXIES:-1}` rather than hardcoding the deployment topology.
+- **Operational evidence:** sanitized exception records carry the original traceback object through `exc_info`, but preformat only filename/line/function locations and a suppressed detail marker, so neither source lines nor input/exception content enter logs. The load tool gives each simulated student a CookieJar-backed opener reused across submit/status/result requests.
+
+### Second-review RED/GREEN evidence
+
+Tests were added before the corresponding implementations. The first combined backend RED run recorded `16 failed, 46 passed`; failures covered all four link limits/parameters/heavy buckets, candidate/AUC bounds, running termination and retryable revoke failure, missing lease/delivery fields, heartbeat/cleanup/late-result/duplicate races, sanitized `exc_info`, GraphML attributes, locked PATCH, admin static, proxy-count substitution, and load-test cookies. The frontend RED run recorded `2 failed, 11 passed` for missing retained cancellation status and missing retryable error UI. A further production routing contract was added before the Nginx static route and recorded `1 failed`.
+
+Focused GREEN after implementation:
+
+```text
+python -m pytest backend/tests/test_task4_link_prediction.py backend/tests/test_task4_queue_cache.py backend/tests/test_task4_cases_e2e.py backend/tests/test_task4_security.py backend/tests/test_task4_deployment.py -q
+62 passed in 7.94s
+
+frontend: npm test -- --run src/views/LabView.test.ts
+13 passed in 2.36s
+```
+
+### Second-review final verification
+
+```text
+python -m pip install -e backend
+succeeded; WhiteNoise 6.12.0 resolved and installed
+
+python -m pytest backend/tests -q
+192 passed in 16.69s
+
+frontend: npm test -- --run
+20 test files passed; 88 tests passed
+
+frontend: npm run build
+vue-tsc -b && vite build; 661 modules transformed; built in 7.07s
+
+python backend/manage.py check
+System check identified no issues (0 silenced).
+
+python backend/manage.py check --deploy  # production TLS/host/origin/proxy env
+System check identified no issues (0 silenced).
+
+python backend/manage.py makemigrations --check --dry-run
+No changes detected
+
+python backend/manage.py migrate --plan
+0003/0004/0005 operations enumerated; migration 0005 adds queue time, lease, requeue count, and cancellation-delivery fields
+
+python -m pip check
+No broken requirements found.
+
+python scripts/validate_compose.py
+compose contract valid
+
+python scripts/verify_release.py --dry-run
+all bounded release commands enumerated successfully
+
+python scripts/load_test.py --dry-run --students 90 --max-jobs 30
+students=90 max_jobs=30 distinct_jobs=90 deadline=120s
+
+frontend: npm audit --audit-level=high
+found 0 vulnerabilities
+
+git diff --check
+no whitespace errors (only repository LF-to-CRLF notices)
+```
+
+### Second-review concerns and self-review
+
+- Docker remains unavailable, so live Redis/Celery revoke signals, prefork heartbeat behavior, proxy/TLS forwarding, PostgreSQL migration/restore, WhiteNoise container delivery, and the 90-student exercise remain staging checks. Conditional database-state tests and executable settings/Compose/Nginx/Docker/load contracts cover the local boundary; no container or browser screenshot is claimed.
+- Bash is not installed on this Windows host, so `bash -n` could not run. Existing restore/backup content contract tests remain green.
+- Full tests still emit the existing development-only WhiteNoise warning that `backend/staticfiles` is absent before `collectstatic`; production image collection and a temporary-root executable static-serving test are green.
+- Vite retains the pre-existing nonfatal lazy `ResultsPanel` chunk warning (608.76 kB minified / 207.24 kB gzip).
+- Manual standards/spec self-review found no remaining Task 4 blocker. The available code-review skill normally delegates two independent axes, but the task explicitly prohibited subagents, so both axes were applied locally. Unrelated `extract_docx.py`, `说明书_提取.txt`, and `.mimosa` remain untouched and unstaged.
