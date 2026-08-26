@@ -11,10 +11,17 @@ x-backend-environment: &backend-environment
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
   POSTGRES_HOST: postgres
   REDIS_URL: redis://redis:6379/0
+  CACHE_URL: redis://redis:6379/1
   CELERY_TASK_ALWAYS_EAGER: "0"
   MAX_UPLOAD_BYTES: "20971520"
   PUBLIC_MAX_NODES: "2000"
   PUBLIC_MAX_EDGES: "20000"
+  PUBLIC_OPERATION_RATE: ${PUBLIC_OPERATION_RATE:-240/hour}
+  PUBLIC_STANDARD_ALGORITHM_RATE: ${PUBLIC_STANDARD_ALGORITHM_RATE:-120/hour}
+  PUBLIC_HEAVY_ALGORITHM_RATE: ${PUBLIC_HEAVY_ALGORITHM_RATE:-30/hour}
+  TEACHER_LOGIN_ATTEMPTS: ${TEACHER_LOGIN_ATTEMPTS:-5}
+  TEACHER_LOGIN_WINDOW_SECONDS: ${TEACHER_LOGIN_WINDOW_SECONDS:-900}
+  RUN_LEASE_SECONDS: ${RUN_LEASE_SECONDS:-900}
 
 services:
   postgres:
@@ -60,7 +67,7 @@ services:
   worker:
     build: ./backend
     restart: unless-stopped
-    command: celery -A config worker --loglevel=info --concurrency=4
+    command: celery -A config worker --loglevel=info --concurrency=4 --queues=default
     environment: *backend-environment
     depends_on:
       postgres: {condition: service_healthy}

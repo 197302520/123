@@ -1,7 +1,7 @@
-export interface GraphNode { id: string; label: string }
+export interface GraphNode { id: string; label: string; attributes?: Record<string, unknown> }
 export interface GraphEdge { source: string; target: string; weight: number }
 export interface GraphSpec { directed: boolean; nodes: GraphNode[]; edges: GraphEdge[] }
-export interface GraphInputNode { id: string; label?: string }
+export interface GraphInputNode { id: string; label?: string; attributes?: Record<string, unknown> }
 export interface GraphInputEdge { source: string; target: string; weight?: number }
 export interface GraphInputSpec { directed: boolean; nodes: GraphInputNode[]; edges: GraphInputEdge[] }
 

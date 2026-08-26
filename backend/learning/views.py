@@ -1,9 +1,12 @@
 """Public learning and anonymous laboratory APIs."""
 from __future__ import annotations
 
+import logging
 from typing import Any
 
+from celery import current_app
 from django.conf import settings
+from django.db import transaction
 from django.http import Http404, HttpResponse
 from django.db.models import Q
 from django.utils import timezone
@@ -18,6 +21,7 @@ from .algorithms import AlgorithmInputError, prepare_algorithm_request
 from .algorithms.graph import coerce_finite_float, normalize_graph
 from .contracts import ALGORITHM_REGISTRY, GraphSpec, RunResult
 from .models import Case, CourseModule, PublishStatus, Run
+from .logging_utils import log_sanitized_exception
 from .reports import build_report_bundle, render_report_html
 from .run_service import active_cached_run, build_cache_key
 from .safe_imports import UnsafeUploadError, parse_uploaded_graph
@@ -26,6 +30,13 @@ from .throttles import (
     AlgorithmIPThrottle, AlgorithmSessionThrottle,
     PublicOperationIPThrottle, PublicOperationSessionThrottle,
 )
+
+
+logger = logging.getLogger(__name__)
+
+
+def queue_for_algorithm(algorithm: str) -> str:
+    return "ml" if algorithm in {"embedding.gcn", "embedding.gat"} else "default"
 
 
 def public_modules():
@@ -81,7 +92,7 @@ def graph_validation(payload: Any) -> tuple[GraphSpec | None, list[dict[str, str
         return None, [{"path": "directed", "message": "directed 必须是布尔值。"}]
     if not isinstance(nodes, list) or not isinstance(edges, list):
         return None, [{"path": "", "message": "nodes 和 edges 必须是数组。"}]
-    normalized_nodes: list[dict[str, str]] = []
+    normalized_nodes: list[dict[str, Any]] = []
     node_ids: set[str] = set()
     errors: list[dict[str, str]] = []
     for index, node in enumerate(nodes):
@@ -93,7 +104,13 @@ def graph_validation(payload: Any) -> tuple[GraphSpec | None, list[dict[str, str
         else:
             node_ids.add(node_id)
             label = node.get("label", node_id)
-            normalized_nodes.append({"id": node_id, "label": label if isinstance(label, str) else node_id})
+            normalized_node: dict[str, Any] = {"id": node_id, "label": label if isinstance(label, str) else node_id}
+            if "attributes" in node:
+                if isinstance(node["attributes"], dict):
+                    normalized_node["attributes"] = node["attributes"]
+                else:
+                    errors.append({"path": f"nodes[{index}].attributes", "message": "节点 attributes 必须是对象。"})
+            normalized_nodes.append(normalized_node)
     normalized_edges: list[dict[str, Any]] = []
     for index, edge in enumerate(edges):
         source = edge.get("source") if isinstance(edge, dict) else None
@@ -228,6 +245,8 @@ class RunListView(APIView):
             finished_at=now if cached else None,
         )
         if not cached:
+            run.task_id = f"run-{run.id}"
+            run.save(update_fields=["task_id"])
             if settings.CELERY_TASK_ALWAYS_EAGER:
                 execute_run_job(str(run.id))
                 run.refresh_from_db()
@@ -235,8 +254,15 @@ class RunListView(APIView):
                     return Response({"error": run.error}, status=status.HTTP_400_BAD_REQUEST)
             else:
                 try:
-                    execute_run_job.delay(str(run.id))
-                except Exception:
+                    execute_run_job.apply_async(
+                        args=[str(run.id)], task_id=run.task_id, queue=queue_for_algorithm(algorithm),
+                    )
+                except Exception as exc:
+                    log_sanitized_exception(
+                        logger,
+                        "Queue submission failed run_id=%s task_id=%s algorithm=%s",
+                        str(run.id), run.task_id, run.algorithm, exc=exc,
+                    )
                     queue_error = {
                         "code": "queue_unavailable",
                         "message": "任务队列暂时不可用，请稍后重试。",
@@ -248,6 +274,37 @@ class RunListView(APIView):
                     run.save(update_fields=["status", "error", "finished_at"])
                     return Response({"error": queue_error}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
         return Response(run_payload(run), status=status.HTTP_201_CREATED)
+
+
+class RunCancelView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [PublicOperationIPThrottle, PublicOperationSessionThrottle]
+
+    def post(self, request: Request, run_id: str) -> Response:
+        try:
+            with transaction.atomic():
+                run = Run.objects.select_for_update().filter(expires_at__gt=timezone.now()).get(pk=run_id)
+                if run.status == Run.Status.CANCELLED:
+                    return Response(run_payload(run))
+                if run.status not in {Run.Status.PENDING, Run.Status.RUNNING}:
+                    return Response(run_payload(run), status=status.HTTP_409_CONFLICT)
+                run.status = Run.Status.CANCELLED
+                run.result = {}
+                run.error = {"code": "cancelled", "message": "任务已取消。", "path": ""}
+                run.finished_at = timezone.now()
+                run.save(update_fields=["status", "result", "error", "finished_at"])
+                task_id = run.task_id
+        except (Run.DoesNotExist, ValueError) as exc:
+            raise Http404 from exc
+        if task_id:
+            try:
+                current_app.control.revoke(task_id, terminate=False)
+            except Exception as exc:
+                log_sanitized_exception(
+                    logger, "Queue revoke failed run_id=%s task_id=%s algorithm=%s",
+                    str(run.id), task_id, run.algorithm, exc=exc,
+                )
+        return Response(run_payload(run))
 
 
 class RunStatusView(APIView):

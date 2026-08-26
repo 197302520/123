@@ -3,11 +3,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.http import Http404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
+from rest_framework.authentication import SessionAuthentication
 from rest_framework.permissions import IsAdminUser
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -19,6 +20,7 @@ from .models import AuditRecord, Case, CourseModule, Dataset, PublishStatus
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
 class TeacherSessionView(APIView):
+    authentication_classes = [SessionAuthentication]
     permission_classes = [IsAdminUser]
 
     def get(self, request: Request) -> Response:
@@ -74,6 +76,7 @@ def _case_fields(data: Any, *, partial: bool) -> tuple[dict[str, Any], dict[str,
 
 
 class TeacherCaseListView(APIView):
+    authentication_classes = [SessionAuthentication]
     permission_classes = [IsAdminUser]
 
     def post(self, request: Request) -> Response:
@@ -82,16 +85,20 @@ class TeacherCaseListView(APIView):
             return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
         if Case.objects.filter(slug=values["slug"]).exists():
             return Response({"errors": {"slug": "slug 已存在。"}}, status=status.HTTP_400_BAD_REQUEST)
-        with transaction.atomic():
-            case = Case.objects.create(**values)
-            AuditRecord.objects.create(
-                actor=request.user, action="create", entity_type="case", entity_id=case.slug,
-                changes={"changed_fields": sorted(values), "status": case.status}, source_ip=client_ip(request),
-            )
+        try:
+            with transaction.atomic():
+                case = Case.objects.create(**values)
+                AuditRecord.objects.create(
+                    actor=request.user, action="create", entity_type="case", entity_id=case.slug,
+                    changes={"changed_fields": sorted(values), "status": case.status}, source_ip=client_ip(request),
+                )
+        except IntegrityError:
+            return Response({"errors": {"slug": "slug 已存在。"}}, status=status.HTTP_409_CONFLICT)
         return Response(_teacher_case_payload(case), status=status.HTTP_201_CREATED)
 
 
 class TeacherCaseDetailView(APIView):
+    authentication_classes = [SessionAuthentication]
     permission_classes = [IsAdminUser]
 
     def patch(self, request: Request, slug: str) -> Response:
@@ -104,12 +111,15 @@ class TeacherCaseDetailView(APIView):
             return Response({"errors": errors}, status=status.HTTP_400_BAD_REQUEST)
         if "slug" in values and values["slug"] != slug and Case.objects.filter(slug=values["slug"]).exists():
             return Response({"errors": {"slug": "slug 已存在。"}}, status=status.HTTP_400_BAD_REQUEST)
-        with transaction.atomic():
-            for name, value in values.items():
-                setattr(case, name, value)
-            case.save()
-            AuditRecord.objects.create(
-                actor=request.user, action="update", entity_type="case", entity_id=case.slug,
-                changes={"changed_fields": sorted(values), "status": case.status}, source_ip=client_ip(request),
-            )
+        try:
+            with transaction.atomic():
+                for name, value in values.items():
+                    setattr(case, name, value)
+                case.save()
+                AuditRecord.objects.create(
+                    actor=request.user, action="update", entity_type="case", entity_id=case.slug,
+                    changes={"changed_fields": sorted(values), "status": case.status}, source_ip=client_ip(request),
+                )
+        except IntegrityError:
+            return Response({"errors": {"slug": "slug 已存在。"}}, status=status.HTTP_409_CONFLICT)
         return Response(_teacher_case_payload(case))

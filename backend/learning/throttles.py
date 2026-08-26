@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.conf import settings
+from django.core.cache import cache
 from rest_framework.throttling import SimpleRateThrottle
 
 
@@ -27,8 +28,24 @@ class ClientCategoryThrottle(SimpleRateThrottle):
     def allow_request(self, request, view):
         self.request = request
         self.rate = self.get_rate()
+        if self.rate is None:
+            return True
         self.num_requests, self.duration = self.parse_rate(self.rate)
-        return super().allow_request(request, view)
+        self.key = self.get_cache_key(request, view)
+        if self.key is None:
+            return True
+        if cache.add(self.key, 1, self.duration):
+            count = 1
+        else:
+            try:
+                count = cache.incr(self.key)
+            except ValueError:
+                cache.set(self.key, 1, self.duration)
+                count = 1
+        return count <= self.num_requests
+
+    def wait(self):
+        return self.duration
 
     def get_category(self, request) -> str:
         return self.category
@@ -59,7 +76,7 @@ class SessionIdentityMixin:
     identity_scope = "session"
 
     def get_identity(self, request) -> str | None:
-        return getattr(request.session, "session_key", None)
+        return getattr(request._request, "_anonymous_public_session_key", None)
 
 
 class PublicOperationSessionThrottle(SessionIdentityMixin, ClientCategoryThrottle):

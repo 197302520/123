@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'vitest'
-import { buildReproducibilityBundle } from './reproducibility'
+import { buildBrowserJsonSnapshot } from './reproducibility'
 import { historyRecord } from '../test/fixtures'
 
 describe('reproducibility bundle', () => {
   test('preserves the full input and backend provenance needed to repeat a run', async () => {
-    const blob = buildReproducibilityBundle(historyRecord)
+    const blob = buildBrowserJsonSnapshot(historyRecord)
     const text = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader()
       reader.onload = () => resolve(String(reader.result))

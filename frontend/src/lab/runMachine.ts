@@ -22,7 +22,7 @@ export async function executeRun(
   request: RunRequest,
   api: RunApi,
   onState: (phase: RunPhase) => void,
-  options: { intervalMs?: number; maxPolls?: number; signal?: AbortSignal } = {},
+  options: { intervalMs?: number; maxPolls?: number; signal?: AbortSignal; onSubmitted?: (status: RunStatus) => void } = {},
 ): Promise<RunResult> {
   const intervalMs = options.intervalMs ?? 700
   const maxPolls = options.maxPolls ?? 120
@@ -31,6 +31,7 @@ export async function executeRun(
     ensureActive(options.signal)
     const submission = await api.submitRun(request, options.signal)
     ensureActive(options.signal)
+    options.onSubmitted?.(submission)
     if (submission.status !== 'completed') {
       onState('polling')
       let status = submission

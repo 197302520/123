@@ -24,7 +24,7 @@ def _safe_name(value: str, fallback: str) -> str:
 def _csv_value(value: Any) -> Any:
     if isinstance(value, (dict, list)):
         value = json.dumps(value, ensure_ascii=False, sort_keys=True)
-    if isinstance(value, str) and value.startswith(("=", "+", "-", "@")):
+    if isinstance(value, str) and value.lstrip(" \t\r\n\v\f").startswith(("=", "+", "-", "@")):
         return "'" + value
     return value
 
@@ -63,7 +63,7 @@ def build_report_bundle(run: Run) -> bytes:
         "result.json": ("application/json", _json({"run_id": str(run.id), "status": run.status, **run.result}).encode("utf-8")),
         "parameters.json": ("application/json", _json({"supplied": run.parameters, "resolved": run.resolved_parameters, "seed": run.seed}).encode("utf-8")),
         "provenance.json": ("application/json", _json(run.result.get("provenance", {})).encode("utf-8")),
-        "nodes.csv": ("text/csv; charset=utf-8", _csv_bytes(["id", "label"], run.graph.get("nodes", []))),
+        "nodes.csv": ("text/csv; charset=utf-8", _csv_bytes(["id", "label", "attributes"], run.graph.get("nodes", []))),
         "edges.csv": ("text/csv; charset=utf-8", _csv_bytes(["source", "target", "weight"], run.graph.get("edges", []))),
         "graph.graphml": ("application/graphml+xml", graphml.encode("utf-8")),
     }

@@ -1,4 +1,6 @@
+import base64
 from io import BytesIO
+from unittest.mock import patch
 import zipfile
 
 import pytest
@@ -8,9 +10,12 @@ from django.contrib.sessions.backends.db import SessionStore
 from django.conf import settings
 from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import override_settings
+from django.db import IntegrityError
+from django.test import RequestFactory, override_settings
 from rest_framework.test import APIClient
 from openpyxl import Workbook
+
+from learning.models import Case
 
 
 SIMPLE_GRAPH = {
@@ -23,6 +28,23 @@ SIMPLE_GRAPH = {
 def test_forwarded_https_header_is_only_trusted_when_the_reverse_proxy_is_trusted():
     """A direct deployment must not let a client spoof HTTPS with a forwarded header."""
     assert settings.SECURE_PROXY_SSL_HEADER is None or settings.TRUST_PROXY_HEADERS
+
+
+@override_settings(
+    TRUST_PROXY_HEADERS=True,
+    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https"),
+)
+def test_trusted_outer_proxy_headers_preserve_https_and_the_real_client_identity():
+    """Overwriting outer TLS/client headers would cause redirects and one shared throttle identity."""
+    request = RequestFactory().get(
+        "/api/cases/", secure=False, REMOTE_ADDR="172.18.0.1",
+        HTTP_X_FORWARDED_PROTO="https", HTTP_X_REAL_IP="203.0.113.25",
+    )
+
+    from learning.middleware import client_ip
+
+    assert request.is_secure() is True
+    assert client_ip(request) == "203.0.113.25"
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +67,19 @@ def test_graph_validation_rejects_the_global_2000_node_shape_limit(api_client):
     assert response.status_code == 413
     assert response.json()["error"]["code"] == "limit_exceeded"
     assert response.json()["error"]["path"] == "nodes"
+
+
+@pytest.mark.parametrize("node", [
+    {"id": "a\x01", "label": "a"},
+    {"id": "a", "label": "unsafe\x01label"},
+])
+def test_graph_validation_rejects_xml_illegal_node_text_before_report_export(api_client, node):
+    """Accepted graph text must always remain serializable as valid GraphML."""
+    response = api_client.post("/api/graphs/validate/", {
+        "directed": False, "nodes": [node], "edges": [],
+    }, format="json")
+
+    assert response.status_code == 400
 
 
 @pytest.mark.django_db
@@ -174,6 +209,34 @@ def test_import_rejects_xlsx_with_excessive_decompressed_size(api_client):
     assert response.status_code == 413
 
 
+@override_settings(PUBLIC_MAX_NODES=2)
+def test_json_import_stops_at_the_node_cap_before_validating_later_items(api_client):
+    """A JSON parser must stop at the cap rather than materialize and validate attacker-sized arrays."""
+    uploaded = SimpleUploadedFile(
+        "network.json",
+        b'{"directed":false,"nodes":[{"id":"a"},{"id":"b"},{"id":null}],"edges":[]}',
+        content_type="application/json",
+    )
+
+    response = api_client.post("/api/graphs/import/", {"file": uploaded}, format="multipart")
+
+    assert response.status_code == 413
+
+
+@override_settings(PUBLIC_MAX_NODES=2)
+def test_xml_import_stops_at_the_node_cap_before_parsing_the_trailing_document(api_client):
+    """XML graph parsing must reject over-limit input before building a complete document tree."""
+    uploaded = SimpleUploadedFile(
+        "network.graphml",
+        b'<graphml xmlns="http://graphml.graphdrawing.org/xmlns"><graph edgedefault="undirected"><node id="a"/><node id="b"/><node id="c"/><broken',
+        content_type="application/graphml+xml",
+    )
+
+    response = api_client.post("/api/graphs/import/", {"file": uploaded}, format="multipart")
+
+    assert response.status_code == 413
+
+
 @pytest.mark.django_db
 def test_public_and_nonstaff_users_cannot_cross_teacher_mutation_boundary(api_client):
     """Weak permission classes would allow anonymous or ordinary users to author cases."""
@@ -187,6 +250,26 @@ def test_public_and_nonstaff_users_cannot_cross_teacher_mutation_boundary(api_cl
     assert anonymous.status_code in {401, 403}
     assert nonstaff.status_code == 403
     assert public_mutation.status_code == 405
+
+
+@pytest.mark.django_db
+def test_teacher_api_rejects_basic_authentication_even_for_staff(api_client):
+    """Basic auth bypasses CSRF, so the teacher mutation boundary must accept sessions only."""
+    from django.core.management import call_command
+
+    call_command("seed_learning_content")
+    teacher = get_user_model().objects.create_user(
+        username="basic-teacher", password="Strong-Teacher-Passphrase-2026!", is_staff=True,
+    )
+    token = base64.b64encode(b"basic-teacher:Strong-Teacher-Passphrase-2026!").decode("ascii")
+    client = APIClient(enforce_csrf_checks=True)
+
+    response = client.post("/api/teacher/cases/", {
+        "slug": "basic-bypass", "title": "Basic 越权", "summary": "不得创建", "module": "communities",
+    }, format="json", HTTP_AUTHORIZATION=f"Basic {token}")
+
+    assert response.status_code in {401, 403}
+    assert not Case.objects.filter(slug="basic-bypass").exists()
 
 
 @pytest.mark.django_db
@@ -225,6 +308,38 @@ def test_teacher_login_throttle_uses_validated_real_ip_behind_trusted_proxy(api_
 
 
 @pytest.mark.django_db
+@override_settings(TEACHER_LOGIN_ATTEMPTS=1, TEACHER_LOGIN_WINDOW_SECONDS=900)
+def test_successful_teacher_login_does_not_consume_the_failed_attempt_budget():
+    """A successful credential check must reset the source bucket instead of locking teachers out."""
+    get_user_model().objects.create_superuser(
+        username="login-teacher", password="Strong-Admin-Passphrase-2026!",
+    )
+    statuses = []
+    for _ in range(2):
+        client = APIClient()
+        response = client.post(
+            "/admin/login/", {"username": "login-teacher", "password": "Strong-Admin-Passphrase-2026!"},
+            REMOTE_ADDR="203.0.113.44",
+        )
+        statuses.append(response.status_code)
+
+    assert statuses == [302, 302]
+
+
+@pytest.mark.django_db
+@override_settings(PUBLIC_OPERATION_RATES={"public": "1/minute"})
+def test_public_operation_creates_anonymous_session_and_session_throttle_survives_ip_rotation():
+    """Both non-identifying session and IP buckets must be active for anonymous public work."""
+    client = APIClient()
+    first = client.post("/api/graphs/validate/", SIMPLE_GRAPH, format="json", REMOTE_ADDR="198.51.100.10")
+    second = client.post("/api/graphs/validate/", SIMPLE_GRAPH, format="json", REMOTE_ADDR="198.51.100.11")
+
+    assert first.status_code == 200
+    assert "sessionid" in first.cookies
+    assert second.status_code == 429
+
+
+@pytest.mark.django_db
 def test_teacher_passwords_use_the_memory_hard_scrypt_default():
     """Falling back to a fast password hash would weaken the authenticated teacher boundary."""
     teacher = get_user_model().objects.create_user(
@@ -250,3 +365,24 @@ def test_teacher_case_slug_is_rejected_before_exceeding_the_database_contract(ap
 
     assert response.status_code == 400
     assert "slug" in response.json()["errors"]
+
+
+@pytest.mark.django_db
+def test_teacher_case_uniqueness_race_returns_conflict_without_partial_audit(api_client):
+    """A concurrent slug insert must become a controlled conflict rather than a 500 or partial audit."""
+    from django.core.management import call_command
+
+    call_command("seed_learning_content")
+    teacher = get_user_model().objects.create_user(
+        username="teacher-race", password="Strong-Teacher-Passphrase-2026!", is_staff=True,
+    )
+    api_client.force_authenticate(teacher)
+    api_client.raise_request_exception = False
+    with patch("learning.teacher_views.Case.objects.create", side_effect=IntegrityError("unique slug")):
+        response = api_client.post("/api/teacher/cases/", {
+            "slug": "racing-case", "title": "并发案例", "summary": "冲突", "module": "communities",
+        }, format="json")
+
+    assert response.status_code == 409
+    assert response.json()["errors"]["slug"] == "slug 已存在。"
+    assert not Case.objects.filter(slug="racing-case").exists()

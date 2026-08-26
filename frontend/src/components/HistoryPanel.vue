@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HistoryRecord } from '../api/contracts'
-import { downloadReproducibilityBundle } from '../lab/reproducibility'
+import { downloadBrowserJsonSnapshot } from '../lab/reproducibility'
 
 defineProps<{ records: HistoryRecord[]; loading?: boolean; activeCompareId?: string; currentRunId?: string; error?: string }>()
 const emit = defineEmits<{ compare: [record: HistoryRecord]; remove: [id: string]; clear: [] }>()
@@ -18,7 +18,7 @@ function confirmClear() { if (window.confirm('确定清空这台设备上的全�
     <ol v-else-if="records.length" class="history-list">
       <li v-for="record in records" :key="record.id" :class="{ active: activeCompareId === record.id }">
         <div><strong>{{ record.algorithmName }}</strong><time :datetime="record.createdAt">{{ formatDate(record.createdAt) }}</time><code>{{ record.id.slice(0, 8) }}</code></div>
-        <div class="history-actions"><button type="button" :disabled="currentRunId === record.id" @click="emit('compare', record)">{{ currentRunId === record.id ? '当前结果' : activeCompareId === record.id ? '正在对比' : '加入对比' }}</button><button type="button" @click="downloadReproducibilityBundle(record)">下载复现包</button><button type="button" @click="emit('remove', record.id)">删除</button></div>
+        <div class="history-actions"><button type="button" :disabled="currentRunId === record.id" @click="emit('compare', record)">{{ currentRunId === record.id ? '当前结果' : activeCompareId === record.id ? '正在对比' : '加入对比' }}</button><button type="button" @click="downloadBrowserJsonSnapshot(record)">下载浏览器 JSON 快照</button><button type="button" @click="emit('remove', record.id)">删除</button></div>
       </li>
     </ol>
   </aside>

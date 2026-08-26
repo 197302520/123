@@ -57,9 +57,9 @@ def case_definitions():
     projection = bipartite.weighted_projected_graph(bipartite_network, sorted(memberships))
     football_projection = nx_to_graph(projection)
     football_source = {
-        "directed": False,
-        "nodes": ([{"id": player, "label": player, "kind": "player"} for player in memberships]
-                  + [{"id": club, "label": club, "kind": "club"} for club in clubs]),
+        "directed": True,
+        "nodes": ([{"id": player, "label": player, "attributes": {"kind": "player"}} for player in memberships]
+                  + [{"id": club, "label": club, "attributes": {"kind": "club"}} for club in clubs]),
         "edges": [{"source": player, "target": club, "weight": 1.0} for player, values in memberships.items() for club in values],
     }
 
@@ -87,6 +87,8 @@ def case_definitions():
         paper: {"topic": ["神经网络", "概率方法", "图学习"][index % 3], "features": [index % 2, (index + 1) % 2, 1]}
         for index, paper in enumerate(papers)
     }
+    for node in citation_graph["nodes"]:
+        node["attributes"] = citation_attributes[node["id"]]
 
     generated = "仓库内确定性生成的教学数据；未复制外部个体记录。"
     cc0 = "CC0-1.0（本项目生成数据）"
@@ -107,7 +109,7 @@ def case_definitions():
             "slug": "football-bipartite", "title": "生成式球员—俱乐部二部网络", "case_title": "球员流动与俱乐部投影",
             "summary": "从球员—俱乐部隶属关系投影出球员共队网络。", "module": "network-basics",
             "provenance": "本项目生成的虚构球员与俱乐部隶属关系。",
-            "metadata": {"source": generated, "license": cc0, "cleaning": "二部图按共同俱乐部数量执行加权球员投影", "version": "2026.08-v1", "graph": football_projection, "source_graph": football_source, "projection": "networkx weighted_projected_graph(players)", "algorithm": "centrality.degree", "parameters": {}, "seed": 5},
+            "metadata": {"source": generated, "license": cc0, "cleaning": "二部图方向统一为球员→俱乐部；附带按共同俱乐部数加权的球员投影视图", "version": "2026.08-v2", "graph": football_source, "projection_graph": football_projection, "projection": "networkx weighted_projected_graph(players)", "algorithm": "centrality.hits", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5},
         },
         {
             "slug": "enterprise-text", "title": "生成式企业关系文本", "case_title": "从企业文本抽取关系网络",
@@ -129,9 +131,9 @@ def case_definitions():
         },
         {
             "slug": "cora-citations", "title": "生成式 Cora 风格属性引用网络", "case_title": "属性论文引用与影响力",
-            "summary": "在小型有向引用图上结合主题属性解释 PageRank。", "module": "network-measures",
+            "summary": "在小型有向引用图上联合结构与主题特征生成属性嵌入。", "module": "network-measures",
             "provenance": "本项目生成的 Cora 风格结构；不复制 Cora 原始论文、标签或特征。",
-            "metadata": {"source": generated, "license": cc0, "cleaning": "虚构 paper ID；三维二值特征与主题标签独立生成", "version": "2026.08-v1", "graph": citation_graph, "node_attributes": citation_attributes, "algorithm": "centrality.pagerank", "parameters": {"alpha": 0.85, "max_iterations": 200, "tolerance": 1e-6}, "seed": 29},
+            "metadata": {"source": generated, "license": cc0, "cleaning": "虚构 paper ID；三维二值特征与主题标签嵌入节点 attributes", "version": "2026.08-v2", "graph": citation_graph, "algorithm": "embedding.ae", "parameters": {"clusters": 3, "embedding_dim": 2, "epochs": 40, "learning_rate": 0.03}, "seed": 29},
         },
     ]
 

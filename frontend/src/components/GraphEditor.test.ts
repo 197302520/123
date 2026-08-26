@@ -4,8 +4,8 @@ import { describe, expect, test, vi } from 'vitest'
 import GraphEditor from './GraphEditor.vue'
 import { exampleGraph } from '../test/fixtures'
 
-vi.mock('../api/client', () => ({ validateGraph: vi.fn() }))
-import { validateGraph } from '../api/client'
+vi.mock('../api/client', () => ({ validateGraph: vi.fn(), importGraph: vi.fn() }))
+import { importGraph, validateGraph } from '../api/client'
 
 describe('graph validation errors', () => {
   test('keeps the hidden file input keyboard-focusable inside its styled label', async () => {
@@ -64,15 +64,31 @@ describe('graph validation errors', () => {
     expect(screen.getByRole('textbox', { name: '粘贴图数据' })).toHaveValue('新甲 新乙')
   })
 
-  test('announces a controlled Chinese error when an imported file cannot be read', async () => {
-    const file = new File(['broken'], 'broken.json', { type: 'application/json' })
-    Object.defineProperty(file, 'text', { value: vi.fn().mockRejectedValue(new Error('disk failure')) })
+  test('imports all advertised formats through the bounded backend parser', async () => {
+    vi.mocked(importGraph).mockResolvedValue({ valid: true, errors: [], graph: exampleGraph })
+    const file = new File(['binary workbook'], 'network.xlsx', { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     const view = render(GraphEditor, { props: { modelValue: exampleGraph }, global: { stubs: { GraphCanvas: true } } })
 
     await userEvent.setup().upload(screen.getByLabelText('导入文件'), file)
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('无法读取文件，请确认文件仍可访问后重试。')
+    expect(importGraph).toHaveBeenCalledWith(file, expect.any(AbortSignal))
+    expect(validateGraph).not.toHaveBeenCalled()
+    expect(await screen.findByRole('status')).toHaveTextContent('导入并校验通过')
+    expect(view.emitted('validated')).toHaveLength(1)
+    const input = screen.getByLabelText('导入文件')
+    expect(input).toHaveAttribute('accept', expect.stringContaining('.graphml'))
+    expect(input).toHaveAttribute('accept', expect.stringContaining('.gexf'))
+  })
+
+  test('announces backend import errors without accepting the graph', async () => {
+    vi.mocked(importGraph).mockRejectedValue(new Error('XLSX 不得包含宏、外部链接或越界路径。'))
+    const file = new File(['unsafe'], 'network.xlsx')
+    const view = render(GraphEditor, { props: { modelValue: exampleGraph }, global: { stubs: { GraphCanvas: true } } })
+
+    await userEvent.setup().upload(screen.getByLabelText('导入文件'), file)
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('XLSX 不得包含宏')
     const invalidEvents = view.emitted('invalid') ?? []
-    expect(invalidEvents[invalidEvents.length - 1]).toEqual(['无法读取文件，请确认文件仍可访问后重试。'])
+    expect(invalidEvents[invalidEvents.length - 1]).toEqual(['XLSX 不得包含宏、外部链接或越界路径。'])
   })
 })

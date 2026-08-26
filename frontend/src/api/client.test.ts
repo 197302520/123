@@ -1,5 +1,5 @@
 import { describe, expect, test, vi } from 'vitest'
-import { fetchAlgorithms, fetchReportBundle, validateGraph } from './client'
+import { cancelRun, fetchAlgorithms, fetchReportBundle, importGraph, validateGraph } from './client'
 import { degreeAlgorithm, exampleGraph } from '../test/fixtures'
 
 describe('public API client', () => {
@@ -40,5 +40,28 @@ describe('public API client', () => {
       reader.readAsText(bundle)
     })
     expect(text).toBe('PK report')
+  })
+
+  test('uploads graph files as multipart without forcing a JSON content type', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      valid: true, errors: [], graph: exampleGraph,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const file = new File(['source,target\na,b'], 'network.xlsx')
+
+    await importGraph(file)
+
+    const [, init] = vi.mocked(fetch).mock.calls[0]
+    expect(init?.body).toBeInstanceOf(FormData)
+    expect(new Headers(init?.headers).has('Content-Type')).toBe(false)
+  })
+
+  test('calls the public idempotent cancellation endpoint', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      id: 'run-1', status: 'cancelled', algorithm: 'centrality.degree', seed: 7,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+    await cancelRun('run/unsafe')
+
+    expect(fetch).toHaveBeenCalledWith('/api/runs/run%2Funsafe/cancel/', expect.objectContaining({ method: 'POST' }))
   })
 })

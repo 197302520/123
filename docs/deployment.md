@@ -17,7 +17,7 @@ docker compose --env-file .env.production -f compose.prod.yaml up -d postgres re
 
 ## HTTPS、域名与境内部署
 
-只在反向代理或负载均衡器终止 TLS 后开放服务，将公网 443 转发到本机 `127.0.0.1:8080`，传递 `Host`、`X-Forwarded-Proto=https`、`X-Real-IP` 和 `X-Forwarded-For`。Compose 仅信任这一层代理；若改变代理层数，必须同步调整 `DJANGO_NUM_PROXIES`，且不得让客户端绕过代理直连 Web 容器。确认域名、证书自动续期、HSTS、可信来源与安全 Cookie 后再开放教师后台。若服务器或 CDN 节点位于中国境内，应在上线前向服务提供商确认 ICP 备案/公安备案及单位数据合规要求；境外部署仍需核对学校的数据分类与跨境政策。
+只在反向代理或负载均衡器终止 TLS 后开放服务，将公网 443 转发到本机 `127.0.0.1:8080`。外层代理必须删除客户端自带的转发头，并写入经验证的 `Host`、`X-Forwarded-Proto=https`、单一合法 IP 的 `X-Real-IP` 和规范化的 `X-Forwarded-For`；内层 Nginx 原样传递这些值，不用容器间 HTTP 或代理容器 IP 覆盖它们。Compose 的 frontend 只绑定 loopback，web 仅 expose 而不映射端口；不得让客户端或同机不可信服务绕过外层代理。若改变代理层数，必须同步调整 `DJANGO_NUM_PROXIES`。确认域名、证书自动续期、HSTS、可信来源与安全 Cookie 后再开放教师后台。若服务器或 CDN 节点位于中国境内，应在上线前向服务提供商确认 ICP 备案/公安备案及单位数据合规要求；境外部署仍需核对学校的数据分类与跨境政策。
 
 ## 数据保留、备份与恢复
 
@@ -29,7 +29,7 @@ docker compose --env-file .env.production -f compose.prod.yaml up -d postgres re
 docker compose --env-file .env.production -f compose.prod.yaml run --rm backup
 ```
 
-脚本生成 PostgreSQL custom-format dump，并删除 14 天前的同类备份。应将 `/backups` 对应卷复制到加密的异机存储，每季度抽样恢复。恢复前先停止 web/worker/beat、另做一次当前库备份并确认目标文件：
+脚本生成 PostgreSQL custom-format dump，并删除 14 天前的同类备份。应将 `/backups` 对应卷复制到加密的异机存储，每季度抽样恢复。恢复前先停止 web/worker/beat、另做一次当前库备份并确认目标文件。恢复脚本只接受规范路径仍位于 `/backups` 且名称匹配的普通 dump 文件，并以 PostgreSQL 单事务执行 clean/restore；任一步失败会整体回滚：
 
 ```sh
 docker compose --env-file .env.production -f compose.prod.yaml stop web worker beat

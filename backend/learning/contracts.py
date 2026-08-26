@@ -7,6 +7,7 @@ from typing import NotRequired, TypedDict
 class GraphInputNode(TypedDict):
     id: str
     label: NotRequired[str]
+    attributes: NotRequired[dict[str, object]]
 
 
 class GraphInputEdge(TypedDict):
@@ -24,6 +25,7 @@ class GraphInputSpec(TypedDict):
 class GraphNode(TypedDict):
     id: str
     label: str
+    attributes: NotRequired[dict[str, object]]
 
 
 class GraphEdge(TypedDict):

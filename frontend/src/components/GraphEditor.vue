@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
 import type { GraphInputSpec, GraphSpec } from '../api/contracts'
-import { validateGraph } from '../api/client'
+import { importGraph, validateGraph } from '../api/client'
 import { parseGraphText, serializeGraph, stripLearningLabel, validateGraphLocally } from '../lab/graphInput'
 import GraphCanvas from './GraphCanvas.vue'
 
@@ -63,18 +63,31 @@ async function importFile(event: Event) {
   if (!file) return
   activeValidation?.abort(); activeValidation = null
   const revision = ++sourceRevision
-  validating.value = false; status.value = ''; error.value = ''
+  const controller = new AbortController()
+  activeValidation = controller
+  validating.value = true; status.value = ''; error.value = ''
   emit('invalid', '已选择新文件，请重新校验。')
-  if (file.size > 20 * 1024 * 1024) { error.value = '文件超过 20 MB，请先精简后再导入。'; return }
+  if (file.size > 20 * 1024 * 1024) {
+    error.value = '文件超过 20 MB，请先精简后再导入。'; validating.value = false; activeValidation = null; return
+  }
   try {
-    const contents = await file.text()
-    if (revision !== sourceRevision) return
-    text.value = contents
-    await validate()
-  } catch {
-    if (revision !== sourceRevision) return
-    error.value = '无法读取文件，请确认文件仍可访问后重试。'
+    const response = await importGraph(file, controller.signal)
+    if (controller.signal.aborted || revision !== sourceRevision) return
+    if (!response.graph) throw new Error('服务器未返回规范化图数据。')
+    preview.value = response.graph
+    text.value = serializeGraph(response.graph, props.learningExample)
+    emit('update:modelValue', response.graph)
+    emit('validated', response.graph)
+    status.value = `导入并校验通过：${response.graph.nodes.length} 个节点，${response.graph.edges.length} 条边。`
+  } catch (reason) {
+    if (controller.signal.aborted || revision !== sourceRevision || (reason instanceof DOMException && reason.name === 'AbortError')) return
+    error.value = reason instanceof Error ? reason.message : '图文件导入失败。'
     emit('invalid', error.value)
+  } finally {
+    if (revision === sourceRevision) {
+      validating.value = false
+      if (activeValidation === controller) activeValidation = null
+    }
   }
 }
 onBeforeUnmount(() => { sourceRevision += 1; activeValidation?.abort() })
@@ -82,10 +95,10 @@ onBeforeUnmount(() => { sourceRevision += 1; activeValidation?.abort() })
 
 <template>
   <section class="graph-editor" aria-labelledby="graph-input-heading">
-    <div class="control-heading"><div><p class="eyebrow">GRAPH INPUT</p><h2 id="graph-input-heading">一、准备网络</h2></div><label class="file-button" :class="{ disabled }">导入文件<input type="file" :disabled="disabled" accept=".json,.txt,.csv,.edgelist,application/json,text/plain,text/csv" @change="importFile" /></label></div>
+    <div class="control-heading"><div><p class="eyebrow">GRAPH INPUT</p><h2 id="graph-input-heading">一、准备网络</h2></div><label class="file-button" :class="{ disabled }">导入文件<input type="file" :disabled="disabled" accept=".txt,.csv,.xlsx,.json,.graphml,.gexf,text/plain,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/graphml+xml,application/gexf+xml" @change="importFile" /></label></div>
     <p class="field-help">粘贴 GraphSpec JSON，或每行输入“起点 终点 [权重]”。示例只是学习起点，不代表算法结论。</p>
     <label class="graph-text-label">粘贴图数据<textarea :value="text" :disabled="disabled" rows="14" spellcheck="false" aria-label="粘贴图数据" @input="editText" /></label>
-    <div class="editor-actions"><button type="button" class="button secondary" :disabled="validating || disabled" @click="validate">{{ validating ? '正在校验…' : '校验图数据' }}</button><span>浏览器支持 JSON / CSV / 空格边表 · 后端安全导入最大 20 MB</span></div>
+    <div class="editor-actions"><button type="button" class="button secondary" :disabled="validating || disabled" @click="validate">{{ validating ? '正在校验…' : '校验图数据' }}</button><span>文件安全导入：TXT / CSV / XLSX / JSON / GraphML / GEXF · 最大 20 MB</span></div>
     <p v-if="status" class="validation-success" role="status">{{ status }}</p>
     <p v-if="error" class="validation-error" role="alert">{{ error }}</p>
     <GraphCanvas :graph="preview" label="当前输入网络预览" />

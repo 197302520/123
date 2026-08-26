@@ -22,8 +22,13 @@ def request_json(url: str, *, payload=None, timeout: float = 10.0):
         return json.load(response)
 
 
-def one_student(base_url: str, deadline_seconds: float) -> str:
-    submitted = request_json(f"{base_url}/api/runs/", payload={"algorithm": "centrality.degree", "graph": GRAPH, "parameters": {}, "seed": 7})
+def student_payload(index: int) -> dict:
+    """Give every simulated learner a real, distinct cache key."""
+    return {"algorithm": "centrality.degree", "graph": GRAPH, "parameters": {}, "seed": 10_000 + index}
+
+
+def one_student(base_url: str, deadline_seconds: float, index: int) -> str:
+    submitted = request_json(f"{base_url}/api/runs/", payload=student_payload(index))
     deadline = time.monotonic() + deadline_seconds
     state = submitted
     while state["status"] in {"pending", "running"} and time.monotonic() < deadline:
@@ -47,17 +52,20 @@ def main() -> int:
     args = parser.parse_args()
     if not 1 <= args.students <= 90 or not 1 <= args.max_jobs <= 30 or args.deadline <= 0:
         parser.error("students must be 1–90, max-jobs 1–30, and deadline positive")
-    print(f"students={args.students} max_jobs={args.max_jobs} deadline={args.deadline:g}s base_url={args.base_url}")
+    print(f"students={args.students} max_jobs={args.max_jobs} distinct_jobs={args.students} deadline={args.deadline:g}s base_url={args.base_url}")
     if args.dry_run:
         return 0
     started = time.monotonic()
     try:
         with ThreadPoolExecutor(max_workers=args.max_jobs) as pool:
-            run_ids = list(pool.map(lambda _: one_student(args.base_url.rstrip('/'), args.deadline), range(args.students)))
+            run_ids = list(pool.map(lambda index: one_student(args.base_url.rstrip('/'), args.deadline, index), range(args.students)))
     except (OSError, urllib.error.URLError, RuntimeError) as exc:
         print(f"load test failed: {exc}")
         return 1
-    print(f"completed={len(run_ids)} elapsed={time.monotonic() - started:.2f}s")
+    if len(set(run_ids)) != args.students:
+        print("load test failed: submissions did not create distinct jobs")
+        return 1
+    print(f"completed={len(run_ids)} distinct_jobs={len(set(run_ids))} elapsed={time.monotonic() - started:.2f}s")
     return 0
 
 

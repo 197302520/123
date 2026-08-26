@@ -12,17 +12,17 @@ The seed command uses `update_or_create`, remains idempotent, and leaves exactly
 | --- | --- | --- |
 | `zachary-karate` | NetworkX 3.x bundled `karate_club_graph`, Wayne W. Zachary (1977) attribution; NetworkX BSD-3-Clause noted; node IDs normalized to strings and faction attributes retained separately. | `community.louvain`, resolution 1.0, seed 7. |
 | `dolphins` | Deterministic synthetic two-community dolphin teaching graph, inspired by but not copied from Lusseau et al. (2003); project-generated CC0-1.0. | `community.lpa`, seed 13. |
-| `football-bipartite` | Project-generated CC0 player–club membership graph plus a real NetworkX weighted player projection; source bipartite graph and projection method are retained. | `centrality.degree`, seed 5. |
+| `football-bipartite` | Project-generated CC0 directed player→club bipartite membership graph plus a real NetworkX weighted player projection; node `attributes.kind`, projection graph, and projection method are retained. | `centrality.hits`, seed 5; the advertised runnable input is the bipartite source graph. |
 | `enterprise-text` | Project-written fictional Chinese enterprise statements, CC0; NFKC/rule-extraction cleaning and evidence-offset policy recorded; no real company claims. | `text.extract` with rule method and normalized relation weights, seed 0. |
 | `trade-snapshots` | Three deterministic fictional six-country weighted snapshots, project-generated CC0; stable country names and positive undirected weights. | `community.dynamic`, threshold 0.3, seed 17. |
 | `opinion-dynamics` | Generated anonymous classroom-role graph and 0–1 initial opinions, project-generated CC0. | `opinion.degroot`, bounded convergence parameters, seed 23. |
-| `cora-citations` | Generated Cora-style directed citation topology with topic and three-dimensional binary node attributes; explicitly does not copy Cora records, labels, or features; CC0. | `centrality.pagerank`, alpha/tolerance/iteration parameters, seed 29. |
+| `cora-citations` | Generated Cora-style directed citation topology with topic and three-dimensional binary node attributes embedded in every GraphSpec node; explicitly does not copy Cora records, labels, or features; CC0. | `embedding.ae` jointly consumes adjacency and the three feature columns, seed 29. |
 
 ## Integration and report contracts
 
 - `/api/cases/:slug/` returns the published dataset metadata used by `/lab?case=:slug`; the laboratory loads its graph, advertised algorithm, merged registry defaults, parameters, and seed, then requires server graph validation before enabling the run.
 - Run submission returns `pending`, `running`, `completed`, `failed`, or `cancelled`; the frontend polls both nonterminal states and surfaces failed/cancelled/timeout outcomes. Tests use deterministic eager execution; production Compose sets `CELERY_TASK_ALWAYS_EAGER=0` and supplies separate Redis-backed worker and beat services.
-- A worker atomically claims only `pending` jobs, writes `running` before computation, and writes `completed` together with the nonempty result. Duplicate delivery cannot re-execute running or terminal jobs. Algorithm/input failures use structured errors; broker-delivery failure marks the row failed and returns a generic 503 without connection details. No cancellation endpoint was added because Tasks 1–3 expose no public cancellation operation; the state remains recognized end-to-end.
+- A worker atomically claims only `pending` jobs, writes `running` before computation, and writes `completed` together with the nonempty result. Duplicate delivery cannot re-execute running or terminal jobs. Algorithm/input failures use structured errors; broker-delivery failure marks the row failed and returns a generic 503 without connection details. Public cancellation is available at `POST /api/runs/:id/cancel/`, is idempotent for cancelled rows, revokes an addressable Celery task without force termination, and uses the persisted cancelled state to win both success and error races.
 - Cache keys are SHA-256 over the normalized graph hash, algorithm key and registry version, parsed/default-resolved parameters, and supplied seed. Node/edge ordering and undirected endpoint order are canonicalized. Only nonempty, completed, unexpired runs can be reused; a cache hit records `cached_from` and gets its own two-hour expiry.
 - `POST /api/reports/` returns a standalone escaped HTML report and bundle URL. The ZIP endpoint returns `application/zip`, a fixed UUID-based filename, and `nosniff`; it contains `report.html`, `result.json`, `nodes.csv`, `edges.csv`, `graph.graphml`, `parameters.json`, `provenance.json`, one CSV per result table, and a MIME-bearing `manifest.json`. CSV formula prefixes are neutralized and all HTML cells, node labels, and provenance are escaped.
 
@@ -129,3 +129,80 @@ no whitespace errors (Git printed only the repository's LF-to-CRLF conversion no
 4. Browser screenshots were not required for Task 4 and none are claimed.
 5. The security-and-hardening review directly led to scrypt defaults, validated/trusted proxy identity, proxy-conditional forwarded-protocol trust, atomic/bulk admin audit coverage, bounded decompressed/delimited parsing, safe formula fallback, broker-error sanitization, CSP, and lifecycle-script blocking. The five-axis code review found no remaining Task 4 blocker.
 6. Unrelated `extract_docx.py`, `说明书_提取.txt`, and `.mimosa` content were neither edited nor staged.
+
+## Review-fix appendix — 2026-08-26
+
+This appendix records the post-Task-4 review fixes and supersedes older statements above where the contracts changed, especially cancellation and the football/citation runnable methods.
+
+### Corrective scope
+
+- **TLS and client identity:** the public frontend remains bound to `127.0.0.1:8080`. Inner Nginx now preserves the outer proxy's validated `X-Forwarded-Proto`, `X-Real-IP`, and normalized `X-Forwarded-For` instead of replacing them with the inner HTTP hop or proxy-container address. Production guidance requires the outer proxy to remove client-supplied forwarding headers and reconstruct them; Django trusts them only when `DJANGO_TRUST_PROXY_HEADERS=1`.
+- **Teacher boundary:** teacher session/case APIs explicitly use only DRF `SessionAuthentication`, so Basic authentication cannot mutate teacher content and session mutations remain CSRF-protected. Login counters use atomic cache `add`/`incr`, count failed credential attempts, and reset after a successful admin login. Slug prechecks remain user-friendly while transactional `IntegrityError` handling converts uniqueness races to HTTP 409 without partial audit records.
+- **Cancellation and recovery:** `Run.task_id` addresses queued work. Submission selects `default` or `ml`, persists the ID, and calls Celery with the selected queue. Cancellation atomically moves pending/running rows to cancelled, clears results, records a terminal time, requests non-terminating revoke, and is idempotent. Worker success and algorithm-error races both re-read/preserve cancellation. Cleanup marks running rows whose lease exceeds `RUN_LEASE_SECONDS` failed before applying the existing two-hour deletion policy, avoiding permanent running rows.
+- **Shared limits:** production Django cache uses `django-redis` at Redis DB 1, shared by Gunicorn/worker processes. Anonymous public operations receive a random, HttpOnly, two-hour session cookie without a profile or server-side identity record. Independent IP and cookie buckets, operation categories, standard/heavy algorithm categories, and failed teacher-login buckets use atomic cache counters. Rate/lease settings are passed through Compose.
+- **Runnable data forms:** football now advertises and runs HITS on the genuine directed player→club bipartite graph while preserving a derivable weighted player projection. Cora-style features live inside GraphSpec node attributes; the AE input concatenates normalized adjacency with those attributes and records `node_attribute_dimensions=3` in provenance.
+- **Import/export hardening:** the frontend sends TXT, CSV, XLSX, JSON, GraphML, and GEXF files to `/api/graphs/import/` as multipart data and presents backend success/errors. JSON node/edge arrays decode item-by-item and XML uses an event preflight, enforcing caps before retaining a complete attacker-sized graph. Graph normalization rejects XML-illegal IDs, labels, and attribute strings. CSV formula neutralization detects dangerous prefixes after spaces, tabs, CR, LF, vertical tabs, or form feeds. GraphML includes serialized node attributes and is parsed in tests.
+- **Operations:** restore resolves both root and source canonically, requires a regular `social-network-*.dump` beneath `/backups`, and uses `pg_restore --clean --if-exists --single-transaction`. The classroom load tool submits 90 distinct real cache keys with at most 30 concurrent jobs and rejects duplicate run IDs. Production CPU workers consume only `default`; optional GNN workers consume `ml`. Unexpected worker/broker exceptions emit a content-free stack plus run/task/algorithm identifiers, while clients receive generic errors.
+- **UI naming:** a completed current run downloads the server multi-format ZIP. Historical local records now explicitly download a “浏览器 JSON 快照”, with correspondingly renamed code, avoiding the previous ambiguous “复现包” label.
+
+### Review RED/GREEN evidence
+
+Backend review tests were written first. The first combined run recorded `22 failed, 27 passed`; failures directly covered Basic-auth mutation, login accounting, missing anonymous session, uniqueness races, cancellation/task IDs/races/leases/queue routing, sanitized logs, attributed cases, formula/XML safety, bounded parsers, shared Redis, proxy forwarding, restore, and distinct load jobs. After a final extra cancellation-error-race test, its isolated RED was `1 failed`, followed by `1 passed` after preserving cancelled state on the error path.
+
+Frontend review tests were then written first. Their RED run recorded `6 failed, 21 passed` for missing multipart import, cancellation client/integration, six-format labels/error state, and ambiguous local JSON naming. The same focused set finished GREEN at `28 passed`.
+
+Final focused review suite:
+
+```text
+python -m pytest backend/tests/test_task4_security.py backend/tests/test_task4_queue_cache.py backend/tests/test_task4_cases_e2e.py backend/tests/test_task4_deployment.py -q
+50 passed in 5.60s
+```
+
+### Review final verification
+
+```text
+python -m pip install -e "backend[dev]"
+succeeded; django-redis 5.4.0 resolved and installed
+
+python -m pytest backend/tests -q
+180 passed in 6.29s
+
+frontend: npm test -- --run
+20 test files passed; 87 tests passed
+
+frontend: npm run build
+vue-tsc -b && vite build; 661 modules transformed; built in 5.12s
+
+python backend/manage.py check
+System check identified no issues (0 silenced).
+
+python backend/manage.py check --deploy  # production TLS/host/origin/proxy env
+System check identified no issues (0 silenced).
+
+python backend/manage.py makemigrations --check --dry-run
+No changes detected
+
+python -m pip check
+No broken requirements found.
+
+python scripts/validate_compose.py compose.prod.yaml
+compose contract valid
+
+python scripts/verify_release.py --dry-run
+all bounded release commands enumerated successfully
+
+python scripts/load_test.py --dry-run --students 90 --max-jobs 30
+students=90 max_jobs=30 distinct_jobs=90 deadline=120s
+
+frontend: npm audit --audit-level=high
+found 0 vulnerabilities
+
+git diff --check
+no whitespace errors (only repository LF-to-CRLF notices)
+```
+
+### Review concerns and file delta
+
+- Docker is unavailable locally, so live outer-proxy, Redis multi-process, Celery revoke/redelivery, PostgreSQL transactional restore, optional ML image, and 90-student capacity behavior remain staging checks; executable settings/header/Compose/script contracts cover them locally and no container execution is claimed.
+- Vite still reports the pre-existing nonfatal lazy `ResultsPanel` chunk warning (608.76 kB minified / 207.24 kB gzip).
+- Review changes span backend settings/models/migration/auth/throttles/queue/tasks/parsers/graph attributes/embeddings/reports/seeds/tests, frontend API/editor/run cancellation/history naming/tests, and production Nginx/Compose/env/restore/load/docs. Unrelated `extract_docx.py`, `说明书_提取.txt`, and `.mimosa` remain untouched and unstaged.

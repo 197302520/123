@@ -10,7 +10,7 @@ from .graph import build_nx_graph
 from .results import chart, overlay, table
 
 
-def _adjacency(graph: dict[str, Any]) -> tuple[list[Any], np.ndarray]:
+def _adjacency(graph: dict[str, Any], *, include_attributes: bool = False) -> tuple[list[Any], np.ndarray, int]:
     network = build_nx_graph(graph)
     nodes = list(sorted(network.nodes, key=str))
     if len(nodes) < 2:
@@ -21,7 +21,33 @@ def _adjacency(graph: dict[str, Any]) -> tuple[list[Any], np.ndarray]:
     )
     matrix += np.eye(len(nodes), dtype=np.float64)
     maximum = float(matrix.max()) or 1.0
-    return nodes, matrix / maximum
+    matrix = matrix / maximum
+    attribute_dimensions = 0
+    if include_attributes:
+        rows = []
+        expected: int | None = None
+        node_lookup = {node["id"]: node for node in graph["nodes"]}
+        for node in nodes:
+            features = node_lookup[str(node)].get("attributes", {}).get("features")
+            if not isinstance(features, list) or not features:
+                raise AlgorithmInputError("AE 属性案例的每个节点都必须包含 features 数组。", path=f"nodes.{node}.attributes.features")
+            if expected is None:
+                expected = len(features)
+            if len(features) != expected:
+                raise AlgorithmInputError("节点 features 维数必须一致。", path=f"nodes.{node}.attributes.features")
+            try:
+                row = [float(value) for value in features]
+            except (TypeError, ValueError) as exc:
+                raise AlgorithmInputError("节点 features 必须是数值数组。", path=f"nodes.{node}.attributes.features") from exc
+            if not np.isfinite(row).all():
+                raise AlgorithmInputError("节点 features 必须是有限数值。", path=f"nodes.{node}.attributes.features")
+            rows.append(row)
+        attribute_dimensions = expected or 0
+        features_matrix = np.asarray(rows, dtype=np.float64)
+        scale = np.max(np.abs(features_matrix), axis=0)
+        scale[scale == 0] = 1
+        matrix = np.concatenate([matrix, features_matrix / scale], axis=1)
+    return nodes, matrix, attribute_dimensions
 
 
 def _kmeans(values: np.ndarray, clusters: int, seed: int | None, max_iterations: int = 100) -> tuple[np.ndarray, int]:
@@ -69,17 +95,17 @@ def _kmeans(values: np.ndarray, clusters: int, seed: int | None, max_iterations:
 
 def _ae(matrix: np.ndarray, dimensions: int, epochs: int, learning_rate: float, seed: int | None) -> tuple[np.ndarray, list[float]]:
     rng = np.random.default_rng(seed)
-    n = len(matrix)
-    encoder = rng.normal(0, 1 / max(1, np.sqrt(n)), size=(n, dimensions))
-    decoder = rng.normal(0, 1 / max(1, np.sqrt(dimensions)), size=(dimensions, n))
+    samples, inputs = matrix.shape
+    encoder = rng.normal(0, 1 / max(1, np.sqrt(inputs)), size=(inputs, dimensions))
+    decoder = rng.normal(0, 1 / max(1, np.sqrt(dimensions)), size=(dimensions, inputs))
     losses: list[float] = []
     for _ in range(epochs):
         embedding = np.tanh(matrix @ encoder)
         reconstruction = embedding @ decoder
         error = reconstruction - matrix
         losses.append(float(np.mean(error ** 2)))
-        gradient_decoder = (embedding.T @ error) * (2 / (n * n))
-        gradient_embedding = (error @ decoder.T) * (2 / (n * n))
+        gradient_decoder = (embedding.T @ error) * (2 / (samples * inputs))
+        gradient_embedding = (error @ decoder.T) * (2 / (samples * inputs))
         gradient_encoder = matrix.T @ (gradient_embedding * (1 - embedding ** 2))
         decoder -= learning_rate * np.clip(gradient_decoder, -5, 5)
         encoder -= learning_rate * np.clip(gradient_encoder, -5, 5)
@@ -178,7 +204,8 @@ def _torch_gat(matrix: np.ndarray, dimensions: int, epochs: int, learning_rate: 
 
 
 def run_embedding(key: str, graph: dict[str, Any], params: dict[str, Any], seed: int | None) -> dict[str, Any]:
-    nodes, matrix = _adjacency(graph)
+    has_features = key == "embedding.ae" and any(node.get("attributes", {}).get("features") for node in graph["nodes"])
+    nodes, matrix, attribute_dimensions = _adjacency(graph, include_attributes=has_features)
     dimensions = min(params.get("embedding_dim", 2), len(nodes))
     epochs = params.get("epochs", 100)
     learning_rate = params.get("learning_rate", 0.05)
@@ -213,5 +240,5 @@ def run_embedding(key: str, graph: dict[str, Any], params: dict[str, Any], seed:
         "tables": [table("embeddings", "节点嵌入与聚类", rows), table("training", "训练损失", [{"epoch": index + 1, "loss": loss} for index, loss in enumerate(losses)])],
         "overlays": [overlay("embedding_clusters", node_styles={row["node"]: {"community": row["cluster"]} for row in rows})],
         "charts": [chart("embedding_scatter", "scatter", [{"name": "embedding", "data": scatter}]), chart("training_loss", "line", [{"name": "loss", "data": [{"x": index + 1, "y": loss} for index, loss in enumerate(losses)]}])],
-        "provenance": {"device": "cpu", "trained": True, "epochs": epochs, "final_loss": losses[-1], "implementation": implementation, "kmeans_iterations": kmeans_iterations},
+        "provenance": {"device": "cpu", "trained": True, "epochs": epochs, "final_loss": losses[-1], "implementation": implementation, "kmeans_iterations": kmeans_iterations, "node_attribute_dimensions": attribute_dimensions},
     }

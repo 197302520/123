@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { AlgorithmSpec, GraphSpec, HistoryRecord, RunRequest, RunResult } from '../api/contracts'
-import { fetchAlgorithms, fetchCase, fetchReportBundle, fetchRunResult, fetchRunStatus, submitRun } from '../api/client'
+import { cancelRun, fetchAlgorithms, fetchCase, fetchReportBundle, fetchRunResult, fetchRunStatus, submitRun } from '../api/client'
 import FormulaBlock from '../components/FormulaBlock.vue'
 import GraphEditor from '../components/GraphEditor.vue'
 import HistoryPanel from '../components/HistoryPanel.vue'
@@ -41,6 +41,7 @@ const caseMessage = ref('')
 const caseLoadError = ref('')
 const reportDownloading = ref(false)
 let activeRunController: AbortController | null = null
+let activeRunId: string | null = null
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value)) as T
 
 const selectedAlgorithm = computed(() => algorithms.value.find((item) => item.key === selectedKey.value) ?? null)
@@ -85,14 +86,14 @@ onMounted(async () => {
   }
   await historyPromise
 })
-onBeforeUnmount(() => activeRunController?.abort())
+onBeforeUnmount(() => cancelActiveRun())
 
 function onValidated(value: GraphSpec) { graph.value = value; graphReady.value = true; phase.value = 'idle'; runError.value = '' }
 function onInvalid() { graphReady.value = false; phase.value = 'idle' }
 
 async function run() {
   if (!selectedAlgorithm.value || !canRun.value) return
-  activeRunController?.abort()
+  cancelActiveRun()
   const controller = new AbortController()
   activeRunController = controller
   const algorithm = clone(selectedAlgorithm.value)
@@ -101,7 +102,10 @@ async function run() {
   try {
     const completed = await executeRun(request, { submitRun, fetchRunStatus, fetchRunResult }, (next) => {
       if (activeRunController === controller && !controller.signal.aborted) phase.value = next
-    }, { signal: controller.signal })
+    }, {
+      signal: controller.signal,
+      onSubmitted: (submission) => { if (activeRunController === controller) activeRunId = submission.id },
+    })
     if (controller.signal.aborted || activeRunController !== controller) return
     result.value = completed
     const record: HistoryRecord = {
@@ -122,11 +126,24 @@ async function run() {
   } catch (reason) {
     if (reason instanceof DOMException && reason.name === 'AbortError') return
     if (activeRunController === controller) runError.value = reason instanceof Error ? reason.message : '运行失败，请检查输入后重试。'
-  } finally { if (activeRunController === controller) activeRunController = null }
+  } finally {
+    if (activeRunController === controller) {
+      activeRunController = null
+      activeRunId = null
+    }
+  }
+}
+
+function cancelActiveRun() {
+  const runId = activeRunId
+  activeRunId = null
+  activeRunController?.abort()
+  activeRunController = null
+  if (runId) void cancelRun(runId).catch(() => undefined)
 }
 
 function resetExperiment() {
-  activeRunController?.abort(); activeRunController = null
+  cancelActiveRun()
   graph.value = structuredClone(LEARNING_EXAMPLE_GRAPH)
   graphReady.value = false
   if (selectedAlgorithm.value) parameters.value = defaultsFor(selectedAlgorithm.value)

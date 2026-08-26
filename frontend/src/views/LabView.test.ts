@@ -8,6 +8,7 @@ vi.mock('../api/client', () => ({
   fetchAlgorithms: vi.fn(),
   fetchCase: vi.fn(),
   fetchReportBundle: vi.fn(),
+  cancelRun: vi.fn(),
   validateGraph: vi.fn(),
   submitRun: vi.fn(),
   fetchRunStatus: vi.fn(),
@@ -19,7 +20,7 @@ vi.mock('../lab/historyStore', () => ({
   deleteHistory: vi.fn(),
   clearHistory: vi.fn(),
 }))
-import { fetchAlgorithms, fetchCase, fetchReportBundle, fetchRunResult, submitRun, validateGraph } from '../api/client'
+import { cancelRun, fetchAlgorithms, fetchCase, fetchReportBundle, fetchRunResult, fetchRunStatus, submitRun, validateGraph } from '../api/client'
 import { clearHistory, deleteHistory, listHistory, saveHistory } from '../lab/historyStore'
 
 const global = { stubs: {
@@ -42,6 +43,7 @@ beforeEach(() => {
     } },
   })
   vi.mocked(fetchReportBundle).mockResolvedValue(new Blob(['zip'], { type: 'application/zip' }))
+  vi.mocked(cancelRun).mockResolvedValue({ id: 'run-1', status: 'cancelled', algorithm: 'centrality.degree', seed: 7 })
   vi.mocked(validateGraph).mockResolvedValue({ valid: true, errors: [], graph: exampleGraph })
   vi.mocked(listHistory).mockResolvedValue([])
   vi.mocked(saveHistory).mockResolvedValue(undefined)
@@ -229,5 +231,22 @@ describe('free laboratory workflow', () => {
     expect((screen.getByRole('textbox', { name: '粘贴图数据' }) as HTMLTextAreaElement).value).toContain('教学示例')
     expect(screen.getByRole('button', { name: '运行真实算法' })).toBeDisabled()
     expect(saveHistory).not.toHaveBeenCalled()
+  })
+
+  test('reset calls server cancellation after a queued run has an id', async () => {
+    vi.mocked(submitRun).mockResolvedValue({ id: 'run-1', status: 'pending', algorithm: 'centrality.degree', seed: 7 })
+    vi.mocked(fetchRunStatus).mockImplementation((_id, signal) => new Promise((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+    }))
+    const user = userEvent.setup()
+    renderLab()
+    await screen.findByRole('option', { name: '度中心性' })
+    await user.click(screen.getByRole('button', { name: '校验图数据' }))
+    await user.click(screen.getByRole('button', { name: '运行真实算法' }))
+    await screen.findByText('算法正在计算，正在轮询结果…')
+
+    await user.click(screen.getByRole('button', { name: '重置整个实验' }))
+
+    await waitFor(() => expect(cancelRun).toHaveBeenCalledWith('run-1'))
   })
 })

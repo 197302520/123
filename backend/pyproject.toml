@@ -5,6 +5,7 @@ requires-python = ">=3.10"
 dependencies = [
     "Django>=5.2,<5.3",
     "djangorestframework>=3.16,<3.17",
+    "django-redis>=5.4,<6",
     "psycopg[binary]>=3.2,<3.3",
     "celery[redis]>=5.4,<5.5",
     "gunicorn>=23,<24",

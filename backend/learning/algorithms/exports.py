@@ -48,11 +48,16 @@ def _graphml(graph: dict[str, Any]) -> str:
     ET.register_namespace("", namespace)
     root = ET.Element(f"{{{namespace}}}graphml")
     ET.SubElement(root, f"{{{namespace}}}key", {"id": "label", "for": "node", "attr.name": "label", "attr.type": "string"})
+    ET.SubElement(root, f"{{{namespace}}}key", {"id": "attributes", "for": "node", "attr.name": "attributes", "attr.type": "string"})
     ET.SubElement(root, f"{{{namespace}}}key", {"id": "weight", "for": "edge", "attr.name": "weight", "attr.type": "double"})
     graph_element = ET.SubElement(root, f"{{{namespace}}}graph", {"id": "G", "edgedefault": "directed" if graph["directed"] else "undirected"})
     for node in graph["nodes"]:
         element = ET.SubElement(graph_element, f"{{{namespace}}}node", {"id": node["id"]})
         ET.SubElement(element, f"{{{namespace}}}data", {"key": "label"}).text = node["label"]
+        if node.get("attributes"):
+            ET.SubElement(element, f"{{{namespace}}}data", {"key": "attributes"}).text = json.dumps(
+                node["attributes"], ensure_ascii=False, sort_keys=True,
+            )
     for index, edge in enumerate(graph["edges"]):
         element = ET.SubElement(graph_element, f"{{{namespace}}}edge", {"id": f"e{index}", "source": edge["source"], "target": edge["target"]})
         ET.SubElement(element, f"{{{namespace}}}data", {"key": "weight"}).text = format(edge["weight"], ".17g")

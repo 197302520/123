@@ -1,6 +1,8 @@
+import csv
 import io
 import json
 import zipfile
+import xml.etree.ElementTree as ET
 
 import pytest
 from django.apps import apps
@@ -57,6 +59,18 @@ def test_seed_is_idempotent_and_all_seven_provenanced_cases_run_real_algorithms(
         assert len(result["provenance"]["graph_hash"]) == 64
         assert len(result["provenance"]["parameter_hash"]) == 64
 
+        if slug == "football-bipartite":
+            kinds = {node["id"]: node["attributes"]["kind"] for node in metadata["graph"]["nodes"]}
+            assert metadata["graph"]["directed"] is True
+            assert all(kinds[edge["source"]] == "player" and kinds[edge["target"]] == "club" for edge in metadata["graph"]["edges"])
+            assert metadata["algorithm"] == "centrality.hits"
+            assert metadata["projection_graph"]["edges"]
+            assert {"hub", "authority"} <= set(result["tables"][0]["rows"][0])
+        if slug == "cora-citations":
+            assert all(len(node["attributes"]["features"]) == 3 for node in metadata["graph"]["nodes"])
+            assert metadata["algorithm"] == "embedding.ae"
+            assert result["provenance"]["node_attribute_dimensions"] == 3
+
 
 @pytest.mark.django_db
 def test_anonymous_case_to_algorithm_to_downloadable_report_bundle_is_end_to_end(api_client):
@@ -64,7 +78,9 @@ def test_anonymous_case_to_algorithm_to_downloadable_report_bundle_is_end_to_end
     call_command("seed_learning_content")
     case = api_client.get("/api/cases/zachary-karate/").json()
     dataset = case["dataset"]["metadata"]
-    dataset["graph"]["nodes"][0]["label"] = "=2+2<script>alert(1)</script>"
+    dangerous_labels = [" \t=2+2<script>alert(1)</script>", "\r+cmd", "\n@formula", " -1"]
+    for node, label in zip(dataset["graph"]["nodes"], dangerous_labels):
+        node["label"] = label
     submission = api_client.post("/api/runs/", {
         "algorithm": dataset["algorithm"], "graph": dataset["graph"],
         "parameters": dataset["parameters"], "seed": dataset["seed"],
@@ -89,7 +105,10 @@ def test_anonymous_case_to_algorithm_to_downloadable_report_bundle_is_end_to_end
         assert {"report.html", "result.json", "nodes.csv", "edges.csv", "graph.graphml", "parameters.json", "provenance.json", "manifest.json"} <= names
         assert any(name.startswith("tables/") and name.endswith(".csv") for name in names)
         assert b"<script>" not in archive.read("report.html")
-        assert "'=2+2" in archive.read("nodes.csv").decode("utf-8-sig")
+        node_rows = list(csv.DictReader(io.StringIO(archive.read("nodes.csv").decode("utf-8-sig"))))
+        exported_labels = {row["label"] for row in node_rows}
+        assert all("'" + label in exported_labels for label in dangerous_labels)
+        ET.fromstring(archive.read("graph.graphml"))
         assert json.loads(archive.read("result.json"))["provenance"]["algorithm"] == dataset["algorithm"]
 
 

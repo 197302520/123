@@ -39,6 +39,7 @@ def _edge_graph(rows: Iterable[Sequence[Any]]) -> dict[str, Any]:
     edges: list[dict[str, Any]] = []
     nodes: set[str] = set()
     max_edges = int(getattr(settings, "PUBLIC_MAX_EDGES", 20_000))
+    max_nodes = int(getattr(settings, "PUBLIC_MAX_NODES", 2_000))
     for index, row in enumerate(rows):
         if not row or all(str(value).strip() == "" for value in row):
             continue
@@ -57,6 +58,8 @@ def _edge_graph(rows: Iterable[Sequence[Any]]) -> dict[str, Any]:
         except (TypeError, ValueError) as exc:
             raise UnsafeUploadError(f"第 {index + 1} 行的权重必须是数值。") from exc
         nodes.update((source, target))
+        if len(nodes) > max_nodes:
+            raise UnsafeUploadError("导入图超过公开节点数限制。", status_code=413)
         edges.append({"source": source, "target": target, "weight": weight})
     return normalize_graph({
         "directed": False,
@@ -94,11 +97,95 @@ def _parse_xlsx(data: bytes) -> dict[str, Any]:
     return parsed
 
 
+def _skip_json_space(text: str, position: int) -> int:
+    while position < len(text) and text[position] in " \t\r\n":
+        position += 1
+    return position
+
+
+def _parse_bounded_json_graph(text: str) -> dict[str, Any]:
+    """Decode graph arrays one item at a time so public caps bound retained objects."""
+    decoder = json.JSONDecoder()
+    position = _skip_json_space(text, 0)
+    if position >= len(text) or text[position] != "{":
+        raise UnsafeUploadError("JSON 图必须是对象。")
+    position += 1
+    payload: dict[str, Any] = {}
+    allowed = {"directed", "nodes", "edges"}
+    while True:
+        position = _skip_json_space(text, position)
+        if position < len(text) and text[position] == "}":
+            position += 1
+            break
+        key, position = decoder.raw_decode(text, position)
+        if not isinstance(key, str) or key not in allowed or key in payload:
+            raise UnsafeUploadError("JSON 图包含重复或不支持的字段。")
+        position = _skip_json_space(text, position)
+        if position >= len(text) or text[position] != ":":
+            raise UnsafeUploadError("JSON 图字段缺少冒号。")
+        position = _skip_json_space(text, position + 1)
+        if key in {"nodes", "edges"}:
+            if position >= len(text) or text[position] != "[":
+                raise UnsafeUploadError(f"{key} 必须是数组。")
+            position += 1
+            values: list[Any] = []
+            limit = int(getattr(settings, "PUBLIC_MAX_NODES" if key == "nodes" else "PUBLIC_MAX_EDGES", 2_000 if key == "nodes" else 20_000))
+            while True:
+                position = _skip_json_space(text, position)
+                if position < len(text) and text[position] == "]":
+                    position += 1
+                    break
+                value, position = decoder.raw_decode(text, position)
+                if len(values) >= limit:
+                    raise UnsafeUploadError(f"导入图超过公开{'节点' if key == 'nodes' else '边'}数限制。", status_code=413)
+                values.append(value)
+                position = _skip_json_space(text, position)
+                if position < len(text) and text[position] == ",":
+                    position += 1
+                    continue
+                if position < len(text) and text[position] == "]":
+                    position += 1
+                    break
+                raise UnsafeUploadError(f"{key} 数组结构无效。")
+            payload[key] = values
+        else:
+            payload[key], position = decoder.raw_decode(text, position)
+        position = _skip_json_space(text, position)
+        if position < len(text) and text[position] == ",":
+            position += 1
+            continue
+        if position < len(text) and text[position] == "}":
+            position += 1
+            break
+        raise UnsafeUploadError("JSON 图对象结构无效。")
+    if _skip_json_space(text, position) != len(text):
+        raise UnsafeUploadError("JSON 图后包含额外内容。")
+    return normalize_graph(payload)
+
+
+def _enforce_xml_graph_limits(data: bytes) -> None:
+    maximums = {
+        "node": int(getattr(settings, "PUBLIC_MAX_NODES", 2_000)),
+        "edge": int(getattr(settings, "PUBLIC_MAX_EDGES", 20_000)),
+    }
+    counts = {"node": 0, "edge": 0}
+    for _, element in ET.iterparse(io.BytesIO(data), events=("end",)):
+        local = element.tag.rsplit("}", 1)[-1]
+        if local in counts:
+            counts[local] += 1
+            if counts[local] > maximums[local]:
+                raise UnsafeUploadError(
+                    f"导入图超过公开{'节点' if local == 'node' else '边'}数限制。", status_code=413,
+                )
+        element.clear()
+
+
 def _parse_xml_graph(data: bytes, suffix: str) -> dict[str, Any]:
     upper = data.upper()
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
         raise UnsafeUploadError("XML 图文件不得包含 DTD 或外部实体。")
     try:
+        _enforce_xml_graph_limits(data)
         if suffix == ".graphml":
             network = nx.read_graphml(io.BytesIO(data))
             if network.is_multigraph():
@@ -146,7 +233,7 @@ def parse_uploaded_graph(uploaded) -> dict[str, Any]:
         raise UnsafeUploadError("不接受压缩包或伪装的归档文件。", status_code=415)
     try:
         if suffix == ".json":
-            return normalize_graph(json.loads(_decode(data)))
+            return _parse_bounded_json_graph(_decode(data))
         if suffix == ".csv":
             return _edge_graph(csv.reader(io.StringIO(_decode(data))))
         if suffix == ".txt":

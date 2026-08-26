@@ -23,6 +23,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "learning.middleware.TeacherLoginThrottleMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "learning.middleware.AnonymousPublicSessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
@@ -95,7 +96,25 @@ PUBLIC_ALGORITHM_RATES = {
 }
 TEACHER_LOGIN_ATTEMPTS = int(os.environ.get("TEACHER_LOGIN_ATTEMPTS", "5"))
 TEACHER_LOGIN_WINDOW_SECONDS = int(os.environ.get("TEACHER_LOGIN_WINDOW_SECONDS", "900"))
+RUN_LEASE_SECONDS = int(os.environ.get("RUN_LEASE_SECONDS", "900"))
 TRUST_PROXY_HEADERS = os.environ.get("DJANGO_TRUST_PROXY_HEADERS", "0") == "1"
+
+CACHE_URL = os.environ.get("CACHE_URL")
+if CACHE_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django_redis.cache.RedisCache",
+            "LOCATION": CACHE_URL,
+            "OPTIONS": {"CLIENT_CLASS": "django_redis.client.DefaultClient"},
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "social-network-teaching",
+        }
+    }
 
 SECURE_SSL_REDIRECT = os.environ.get("DJANGO_SECURE_SSL", "0") == "1"
 SESSION_COOKIE_SECURE = SECURE_SSL_REDIRECT

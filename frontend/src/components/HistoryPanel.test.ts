@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from 'vitest'
 import HistoryPanel from './HistoryPanel.vue'
 import { historyRecord } from '../test/fixtures'
 
-vi.mock('../lab/reproducibility', () => ({ downloadReproducibilityBundle: vi.fn() }))
+vi.mock('../lab/reproducibility', () => ({ downloadBrowserJsonSnapshot: vi.fn() }))
 
 describe('history comparison and destructive actions', () => {
   test('disables self-comparison for the current result', () => {
@@ -29,5 +29,12 @@ describe('history comparison and destructive actions', () => {
     expect(screen.getByRole('alert', { name: '本机历史错误' })).toHaveTextContent('读取失败')
     expect(screen.queryByText('还没有实验记录。完成一次真实运行后，它会出现在这里。')).not.toBeInTheDocument()
     expect(screen.queryByRole('list')).not.toBeInTheDocument()
+  })
+
+  test('labels local JSON separately from the server multi-format bundle', () => {
+    render(HistoryPanel, { props: { records: [historyRecord] } })
+
+    expect(screen.getByRole('button', { name: '下载浏览器 JSON 快照' })).toBeVisible()
+    expect(screen.queryByRole('button', { name: '下载复现包' })).not.toBeInTheDocument()
   })
 })

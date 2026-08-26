@@ -74,6 +74,7 @@ class Run(models.Model):
     seed = models.IntegerField(null=True, blank=True)
     algorithm_version = models.CharField(max_length=32, default="1.0")
     cache_key = models.CharField(max_length=64, blank=True, db_index=True)
+    task_id = models.CharField(max_length=128, blank=True, db_index=True)
     cached_from = models.ForeignKey("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="cache_hits")
     status = models.CharField(max_length=16, choices=Status.choices, default=Status.PENDING)
     result = models.JSONField(default=dict, blank=True)

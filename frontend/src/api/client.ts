@@ -14,7 +14,7 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
     ...init,
     headers: {
       Accept: 'application/json',
-      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
       ...init.headers,
     },
   })
@@ -49,9 +49,15 @@ export const fetchAlgorithms = () => requestJson<AlgorithmSpec[]>('/api/algorith
 export const validateGraph = (graph: GraphInputSpec, signal?: AbortSignal) => requestJson<GraphValidation>('/api/graphs/validate/', {
   method: 'POST', body: JSON.stringify(graph), signal,
 })
+export const importGraph = (file: File, signal?: AbortSignal) => {
+  const body = new FormData()
+  body.append('file', file)
+  return requestJson<GraphValidation>('/api/graphs/import/', { method: 'POST', body, signal })
+}
 export const submitRun = (request: RunRequest, signal?: AbortSignal) => requestJson<RunStatus>('/api/runs/', {
   method: 'POST', body: JSON.stringify(request), signal,
 })
 export const fetchRunStatus = (id: string, signal?: AbortSignal) => requestJson<RunStatus>(`/api/runs/${encodeURIComponent(id)}/`, { signal })
 export const fetchRunResult = (id: string, signal?: AbortSignal) => requestJson<RunResult>(`/api/runs/${encodeURIComponent(id)}/result/`, { signal })
+export const cancelRun = (id: string) => requestJson<RunStatus>(`/api/runs/${encodeURIComponent(id)}/cancel/`, { method: 'POST', body: JSON.stringify({}) })
 export const fetchReportBundle = (id: string, signal?: AbortSignal) => requestBlob(`/api/reports/${encodeURIComponent(id)}/bundle/`, { signal })

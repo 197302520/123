@@ -1,6 +1,6 @@
 import type { HistoryRecord } from '../api/contracts'
 
-export function buildReproducibilityBundle(record: HistoryRecord): Blob {
+export function buildBrowserJsonSnapshot(record: HistoryRecord): Blob {
   return new Blob([JSON.stringify({
     schema: 'sna-teaching-reproducibility/v1',
     exported_at: new Date().toISOString(),
@@ -15,11 +15,11 @@ export function buildReproducibilityBundle(record: HistoryRecord): Blob {
   }, null, 2)], { type: 'application/json;charset=utf-8' })
 }
 
-export function downloadReproducibilityBundle(record: HistoryRecord): void {
-  const url = URL.createObjectURL(buildReproducibilityBundle(record))
+export function downloadBrowserJsonSnapshot(record: HistoryRecord): void {
+  const url = URL.createObjectURL(buildBrowserJsonSnapshot(record))
   const anchor = document.createElement('a')
   anchor.href = url
-  anchor.download = `社会网络实验-${record.algorithm}-${record.id}.json`
+  anchor.download = `社会网络实验-浏览器快照-${record.algorithm}-${record.id}.json`
   anchor.click()
   URL.revokeObjectURL(url)
 }
