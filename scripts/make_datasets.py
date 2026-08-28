@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
-"""生成实验数据集到项目根目录 data/ 文件夹。
+"""生成实验数据集到项目根目录 data/ 文件夹（按实验分中文子文件夹）。
 
-数据集与《平台说明书》的算法模块一一对应，全部可直接在自由实验室
-通过「导入文件」或「粘贴边表」使用。运行：python scripts/make_datasets.py
+每个「实验XX_名称」文件夹 = 一次课的数据，配套一页「怎么运行.md」操作卡
+（操作卡为仓库内手写文件，重新生成数据不会覆盖）。数据集与《平台说明书》
+的算法模块一一对应，全部可直接在自由实验室通过「导入文件」或「粘贴边表」
+使用。运行：python scripts/make_datasets.py
 """
 from __future__ import annotations
 
@@ -20,9 +22,23 @@ from learning.data.sarasota_dolphins import EDGES as DOLPHIN_EDGES  # noqa: E402
 DATA = ROOT / "data"
 DATA.mkdir(exist_ok=True)
 
+KARATE = "空手道俱乐部网络.txt"
+DOLPHINS = "海豚社群网络.csv"
+FOOTBALL = "世界杯球员俱乐部.csv"
+TRADE = "国际贸易流向.json"
+GRID = "区域输电网.csv"
+OPINION = "课堂意见网络.json"
+OPINION_PARAMS = "观点模型参数.json"
+DYNAMIC = "企业联盟网络.json"
+DYNAMIC_PARAMS = "联盟三期快照参数.json"
+ATTRIBUTED = "研究者合作属性网络.json"
+ENTERPRISE = "企业关系新闻文本.txt"
+
 
 def write(name: str, text: str) -> None:
-    (DATA / name).write_text(text, encoding="utf-8", newline="\n")
+    path = DATA / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
     print(f"  {name}: {len(text.splitlines())} 行")
 
 
@@ -50,12 +66,15 @@ def graph_json(directed: bool, edges: list, attributes: dict | None = None) -> d
 # ---------------------------------------------------------------- 1. 空手道
 # Zachary (1977) 空手道俱乐部网络：34 节点 78 边，社区发现经典基准。
 karate = nx.karate_club_graph()
-lines = [f"{u} {v}" for u, v in karate.edges()]
-write("karate_club.txt", "\n".join(lines) + "\n")
+karate_text = "\n".join(f"{u} {v}" for u, v in karate.edges()) + "\n"
+for folder in ["实验02_可视化与格式导出", "实验03_基础拓扑与最短路", "实验04_中心性测度", "实验05_社区发现_非重叠", "实验08_网络韧性攻击"]:
+    write(f"{folder}/{KARATE}", karate_text)
 
 # ---------------------------------------------------------------- 2. 海豚
 # Lusseau (2003) 海豚关联网络：62 节点 159 边，重叠社区与链路预测常用。
-write("dolphins.csv", "source,target\n" + "\n".join(f"{a},{b}" for a, b in DOLPHIN_EDGES) + "\n")
+dolphins_text = "source,target\n" + "\n".join(f"{a},{b}" for a, b in DOLPHIN_EDGES) + "\n"
+for folder in ["实验06_社区发现_重叠", "实验09_链路预测"]:
+    write(f"{folder}/{DOLPHINS}", dolphins_text)
 
 # ---------------------------------------------------------------- 3. 世界杯球员→俱乐部
 # 2022 卡塔尔世界杯八强球队核心球员与其效力俱乐部（投影后可做二部网、
@@ -78,7 +97,11 @@ football = [
     ("理查利森", "托特纳姆热刺"), ("安东尼", "曼联"), ("阿尔维斯", "美洲狮"),
 ]
 write(
-    "football_worldcup.csv",
+    f"实验02_可视化与格式导出/{FOOTBALL}",
+    "source,target,weight\n" + "\n".join(f"{p},{c},1" for p, c in football) + "\n",
+)
+write(
+    f"实验04_中心性测度/{FOOTBALL}",
     "source,target,weight\n" + "\n".join(f"{p},{c},1" for p, c in football) + "\n",
 )
 
@@ -104,7 +127,7 @@ trade = [
     ("巴西", "中国", 12), ("巴西", "美国", 8), ("巴西", "欧盟", 9),
     ("沙特", "中国", 10), ("沙特", "欧盟", 8),
 ]
-write("trade_directed.json", json.dumps(graph_json(True, trade), ensure_ascii=False, indent=2) + "\n")
+write(f"实验04_中心性测度/{TRADE}", json.dumps(graph_json(True, trade), ensure_ascii=False, indent=2) + "\n")
 
 # ---------------------------------------------------------------- 5. 区域电网
 # 合成的区域输电网：24 个节点（电厂 G*、变电站 T*、城市 C*），边权为
@@ -120,7 +143,7 @@ grid_edges = [
     ("C1", "C2", 2), ("C3", "C4", 2), ("C5", "C6", 2), ("C7", "C8", 2),
     ("C9", "C10", 2), ("C1", "C10", 2),
 ]
-write("power_grid_mini.csv", "source,target,weight\n" + "\n".join(f"{a},{b},{w}" for a, b, w in grid_edges) + "\n")
+write(f"实验08_网络韧性攻击/{GRID}", "source,target,weight\n" + "\n".join(f"{a},{b},{w}" for a, b, w in grid_edges) + "\n")
 
 
 # ---------------------------------------------------------------- 6. 课堂意见网
@@ -133,20 +156,20 @@ opinion_edges = [
     ("S7", "S8", 3), ("S7", "S9", 2), ("S8", "S9", 3), ("S8", "S10", 2),
     ("S9", "S11", 2), ("S10", "S11", 3), ("S10", "S12", 2), ("S11", "S12", 3),
 ]
-write("opinion_classroom.json", json.dumps(graph_json(False, opinion_edges), ensure_ascii=False, indent=2) + "\n")
+write(f"实验10_观点动力学/{OPINION}", json.dumps(graph_json(False, opinion_edges), ensure_ascii=False, indent=2) + "\n")
 
 opinions = {
     "S1": 0.15, "S2": 0.2, "S3": 0.1, "S4": 0.25, "S5": 0.2, "S6": 0.35,
     "S7": 0.65, "S8": 0.8, "S9": 0.75, "S10": 0.9, "S11": 0.8, "S12": 0.85,
 }
 opinion_params = {
-    "_说明": "配合 opinion_classroom.json：导入图后按算法复制对应参数块到「参数」编辑器；opinions 是每个节点的初始意见（0–1）。",
+    "_说明": "配合 课堂意见网络.json：导入图后按算法复制对应参数块到「参数」编辑器；opinions 是每个节点的初始意见（0–1）。",
     "opinion.degroot": {"opinions": opinions, "max_iterations": 200, "tolerance": 1e-06},
     "opinion.friedkin_johnsen": {"opinions": opinions, "stubbornness": 0.35, "max_iterations": 200, "tolerance": 1e-06},
     "opinion.deffuant": {"opinions": opinions, "confidence": 0.3, "mu": 0.5, "steps": 500, "tolerance": 1e-06},
     "opinion.hk": {"opinions": opinions, "confidence": 0.25, "max_iterations": 200, "tolerance": 1e-06},
 }
-write("opinion_models.params.json", json.dumps(opinion_params, ensure_ascii=False, indent=2) + "\n")
+write(f"实验10_观点动力学/{OPINION_PARAMS}", json.dumps(opinion_params, ensure_ascii=False, indent=2) + "\n")
 
 # ---------------------------------------------------------------- 7. 动态联盟网
 # 14 家企业的合作网络，三个年度快照。拓扑按 Louvain 自动检测校准：
@@ -178,12 +201,12 @@ t3 = A_CAMP + B123 + B4567 + [
     ("A1", "B1", 4), ("A2", "B2", 4), ("A3", "B3", 4),
     ("A4", "B1", 4), ("A5", "B2", 4), ("A6", "B3", 4),
 ] + BRIDGE_A6_B7
-write("dynamic_alliance.json", json.dumps(snap(t1), ensure_ascii=False, indent=2) + "\n")
+write(f"实验11_动态社区演化/{DYNAMIC}", json.dumps(snap(t1), ensure_ascii=False, indent=2) + "\n")
 dynamic_params = {
-    "_说明": "配合 dynamic_alliance.json：导入基线图后，把 snapshots 与 threshold 复制到 community.dynamic 的参数编辑器。",
+    "_说明": "配合 企业联盟网络.json：导入基线图后，把 snapshots 与 threshold 复制到 community.dynamic 的参数编辑器。",
     "community.dynamic": {"snapshots": [snap(t1), snap(t2), snap(t3)], "threshold": 0.3},
 }
-write("dynamic_alliance.params.json", json.dumps(dynamic_params, ensure_ascii=False, indent=2) + "\n")
+write(f"实验11_动态社区演化/{DYNAMIC_PARAMS}", json.dumps(dynamic_params, ensure_ascii=False, indent=2) + "\n")
 
 # ---------------------------------------------------------------- 8. 属性网络
 # 20 位研究者的合作网络：两个主题社群（topic: A/B），每人带 4 维研究
@@ -207,7 +230,7 @@ for index in range(1, 21):
         "topic": topic,
         "features": [round(rng.uniform(0, 1), 3) for _ in range(4)],
     }
-write("attributed_network.json", json.dumps(graph_json(False, attr_edges, attributes), ensure_ascii=False, indent=2) + "\n")
+write(f"实验07_深度学习社区/{ATTRIBUTED}", json.dumps(graph_json(False, attr_edges, attributes), ensure_ascii=False, indent=2) + "\n")
 
 # ---------------------------------------------------------------- 9. 企业文本
 # 句式严格对齐规则抽取引擎的三类模式：A与B+签署/达成/建立/开展/联合、
@@ -226,6 +249,6 @@ enterprise_text = """华为公司与宁德时代签署战略合作协议。
 宁德时代与特斯拉达成供货协议。
 华为公司与比亚迪建立智能驾驶合作。
 """
-write("enterprise_relations.txt", enterprise_text)
+write(f"实验01_文本抽取建网/{ENTERPRISE}", enterprise_text)
 
-print("\n全部数据集已生成到 data/ 文件夹。")
+print("\n全部数据集已按实验生成到 data/实验XX_* 子文件夹。")

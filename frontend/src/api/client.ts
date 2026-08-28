@@ -9,12 +9,20 @@ interface ErrorPayload {
   errors?: Array<{ path: string; message: string }>
 }
 
+// 教师在同一浏览器登录后台后，DRF SessionAuthentication 会对 POST 强制 CSRF 校验。
+function csrfToken(): string {
+  const match = document.cookie.match(/(?:^|;\s*)csrftoken=([^;]*)/)
+  return match ? decodeURIComponent(match[1]) : ''
+}
+
 async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? 'GET').toUpperCase()
   const response = await fetch(path, {
     ...init,
     headers: {
       Accept: 'application/json',
       ...(init.body && !(init.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
+      ...(method !== 'GET' && method !== 'HEAD' && csrfToken() ? { 'X-CSRFToken': csrfToken() } : {}),
       ...init.headers,
     },
   })

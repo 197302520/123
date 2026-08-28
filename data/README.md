@@ -1,65 +1,73 @@
-# 实验数据集索引
+# 实验数据总说明（老师先看这一页）
 
-本文件夹的数据集与《平台说明书》的算法模块一一对应，全部可在**自由实验室**
-（`/lab`）通过「导入文件」或「粘贴边表」直接使用。所有数据集均通过平台
-导入校验与算法实测（见文末验证记录）。
+本文件夹已按**实验**分好类：每个「实验XX_名称」文件夹 = 一次课的数据 + 一页「怎么运行.md」操作卡（照着点就能上课）。
 
-## 快速使用
+## 上课前先记住三句话（回答"是不是每次都要导入文件"）
 
-1. 打开 <http://localhost:5173/lab>，点「导入文件」选择下面的 CSV / TXT / JSON 文件；
-2. TXT / CSV 边表导入后默认为**无向图**——世界杯球员数据集请在编辑器里把图切换为**有向**（球员 → 俱乐部）；贸易数据集用 JSON 格式保存、自带 `directed: true`，导入即有向；
-3. JSON 文件自带 `directed` 字段与节点属性，导入即用；
-4. 观点模型与动态社区还需要把 `*.params.json` 里对应算法的参数块复制到参数编辑器（文件内有说明）。
+1. **大多数实验不用导入文件**：打开平台「案例库」（/cases）→ 点开案例 → 在案例页 **「运行分析」** 标签点「运行分析」——内置算法就地出结果（无需去实验室）。要换数据、调参数时再点案例页底部 **「去实验室自由探索」**。案例库能覆盖：空手道、海豚、世界杯球员、企业文本、贸易快照、课堂意见、引用网络七类实验。
+2. **四个算法连数据都不需要**：ER 随机图、WS 小世界、BA 无标度图（平台自己生成网络），以及中文文本抽取（把文字粘贴进参数即可）。
+3. **只有两种情况才点「导入文件」**：① 想用本文件夹里的数据集做自由实验（每个文件夹里都有对应文件）；② 用自己的数据（边表 TXT/CSV 或 JSON）。
 
-## 数据集一览
+## 实验 → 数据 对照表
 
-| 文件 | 内容 | 格式 | 适配算法（说明书章节） |
-| --- | --- | --- | --- |
-| `karate_club.txt` | Zachary (1977) 空手道俱乐部，34 节点 78 边 | 边表 | 度/接近/中介/特征向量中心性（模块4）；GN、FN、Louvain、Leiden、LPA、KL（模块5）；随机/蓄意攻击（模块6）；拓扑摘要、Floyd、聚类系数（模块3） |
-| `dolphins.csv` | Lusseau (2003) 海豚关联网络，62 节点 159 边 | CSV | CPM、LFM、SLPA 重叠社区（模块5）；CN、Jaccard、AA、RA 链路预测与 AUC（模块6）；Louvain/Leiden 对比 |
-| `football_worldcup.csv` | 2022 世界杯八强 45 名球员 → 22 家俱乐部（有向二部） | CSV | 二部网表示与投影（模块1/2）；社区发现；度中心性（出/入度） |
-| `trade_directed.json` | 14 经济体出口流向与量级（有向加权，单位十亿美元） | GraphSpec JSON | PageRank、HITS（模块4）；Floyd 最短路（模块3）；度中心性出/入度；中心势 |
-| `power_grid_mini.csv` | 区域输电网 24 节点，边权 = 线路容量 | CSV | 网络韧性：最大连通子图占比、综合鲁棒性 R、随机 vs 蓄意攻击（模块6） |
-| `opinion_classroom.json` | 12 人课堂讨论网（加权无向，两个观点阵营） | GraphML 式 JSON | DeGroot、FJ、Deffuant、HK（模块7），配 `opinion_models.params.json` |
-| `opinion_models.params.json` | 四个观点模型的建议参数（含每人初始意见） | 参数 JSON | 同上 |
-| `dynamic_alliance.json` | 14 家企业合作网 t1 快照（无向） | JSON | 动态社区（模块5/动态），配 `dynamic_alliance.params.json` |
-| `dynamic_alliance.params.json` | t1–t3 三个快照 + Jaccard 匹配阈值 | 参数 JSON | 社区延续 / 分裂 / 合并事件识别 |
-| `attributed_network.json` | 20 位研究者合作网：topic 属性 + 4 维特征（无向） | JSON | AE、CNN、GCN、GAT 嵌入聚类（模块5 深度学习社区） |
-| `enterprise_relations.txt` | 新能源汽车产业链中文新闻文本 | 中文文本 | 中文实体关系建网：清洗、实体抽取、同指合并、关系频次（模块1）；导出 XLSX/GraphML 等（模块2） |
+| 实验文件夹 | 实验名称 | 说明书章节 | 文件夹里的数据 | 免导入路线 |
+| --- | --- | --- | --- | --- |
+| `实验01_文本抽取建网` | 从中文新闻自动建网络 | §2 | 企业关系新闻文本.txt | —（文本粘贴进参数） |
+| `实验02_可视化与格式导出` | 可视化 + 导出 Excel/GraphML | §3、§2.3 | 空手道俱乐部网络.txt、世界杯球员俱乐部.csv | 案例：Zachary 空手道俱乐部 |
+| `实验03_基础拓扑与最短路` | 拓扑摘要/Floyd/聚类系数/ER-WS-BA | §4 | 空手道俱乐部网络.txt（ER/WS/BA 免数据） | 案例：Zachary 空手道俱乐部 |
+| `实验04_中心性测度` | 七种中心性 | §5 | 空手道 txt + 国际贸易流向.json + 世界杯 csv | 案例：Zachary 空手道俱乐部 |
+| `实验05_社区发现_非重叠` | KL→GN→Louvain→LPA→多算法对比 | §6.1–6.3 | 空手道俱乐部网络.txt | 案例：Zachary 空手道俱乐部 |
+| `实验06_社区发现_重叠` | CPM/LFM/SLPA | §6.4 | 海豚社群网络.csv | 案例：海豚社群 |
+| `实验07_深度学习社区` | AE/CNN（GCN/GAT 需 ML 镜像） | §6.5 | 研究者合作属性网络.json | —（需导入） |
+| `实验08_网络韧性攻击` | 随机/蓄意攻击、S(q)、R | §7.1 | 区域输电网.csv + 空手道 txt | —（需导入） |
+| `实验09_链路预测` | CN/Jaccard/AA/RA + AUC | §7.2 | 海豚社群网络.csv | 案例：海豚社群 |
+| `实验10_观点动力学` | DeGroot/FJ/Deffuant/HK | §8 | 课堂意见网络.json + 观点模型参数.json | 案例：课堂意见网络 |
+| `实验11_动态社区演化` | 社区延续/分裂/合并事件 | §6.6 | 企业联盟网络.json + 联盟三期快照参数.json | 案例：贸易网络中的动态社群（同类） |
 
-> 生成器：`python scripts/make_datasets.py` 可重新生成本文件夹（真实数据集
-> 来自 NetworkX 与平台内置的 Lusseau 海豚数据）。
+> 每个文件夹里的 `怎么运行.md` 是那一节课的操作卡：进入方式 → 逐步点击 → 参数怎么动 → 带学生看什么 → 课堂话术。逐算法的详细讲稿另见 [`docs/教师课堂演示指南.md`](../docs/教师课堂演示指南.md)。
 
-## 说明书算法覆盖对照
+## 实验室通用三步（所有实验相同）
 
-| 说明书模块 | 说明书要求 | 平台实现（42 种算法全部可运行） | 推荐数据集 |
-| --- | --- | --- | --- |
-| 模块1 文本预处理建网 | 清洗、实体识别、同指合并、关系抽取、频次统计 | `text.extract`（规则 + 可选本地模型；余弦/频次权重；语义合并） | `enterprise_relations.txt` |
-| 模块2 数据导出 | XLSX/JSON/CSV/TXT/GraphML/GEXF/GML/Pajek | `export.graph`（8 种格式 + 邻接矩阵） | 任一数据集运行后导出 |
-| 模块3 基础拓扑 | 度/平均度、Floyd、聚类系数、ER/WS/BA 判别 | `topology.summary`、`paths.floyd`、`clustering.coefficient`、`model.er/ws/ba`、`graph.validate` | `karate_club.txt`；ER/WS/BA 用平台生成器 |
-| 模块4 中心性 | 度、接近、中介、特征向量、PageRank、HITS、中心势 | `centrality.*` 六种 + `centralization.degree` | `trade_directed.csv`（有向）、`karate_club.txt` |
-| 模块5 社区发现 | 模块度、KL、层次、GN、FN、Louvain、Leiden、LPA、CPM、LFM、SLPA、GCN、GAT、AE、CNN、动态社区 | `community.*` 十四种 + `embedding.*` 四种 + `community.compare` 多算法对比 | `karate_club.txt`、`dolphins.csv`、`attributed_network.json`、`dynamic_alliance.*` |
-| 模块6 韧性 + 链路预测 | 连通子图占比、R、随机/蓄意攻击；CN、Jaccard、AA、RA、AUC | `robustness.attack`；`link_prediction.*` 四种（内置 AUC 留出验证） | `power_grid_mini.csv`、`karate_club.txt`；`dolphins.csv` |
-| 模块7 观点动力学 | DeGroot、FJ、Deffuant、HK、观点方差 | `opinion.*` 四种（轨迹图 + 方差曲线） | `opinion_classroom.json` |
+1. **第一步 准备网络**：导入文件或粘贴边表（"起点 终点 [权重]"每行一条）→ 点「校验图数据」；
+2. **第二步 选择算法**：下拉框按模块分组；查看公式与参数说明；固定随机种子；
+3. **第三步 运行**：点「运行真实算法」→ 讲解 表格 / 图表 / 网络叠加层（节点大小=指标值、边粗细=权重、节点颜色=社区）/ 警告 / 溯源；可下载 HTML 报告与 ZIP 复现包。
+
+**格式提示**：TXT/CSV 边表导入默认**无向图**；世界杯球员数据做有向实验时在编辑器里切换为有向；JSON 数据自带 `directed` 字段。参数类 JSON（观点/动态社区）里的参数块需复制到算法的「参数」编辑器，文件内有说明。
+
+## 数据集说明（原索引，供查阅）
+
+| 数据文件（中文名） | 原文件名 | 内容 |
+| --- | --- | --- |
+| 空手道俱乐部网络.txt | karate_club.txt | Zachary (1977) 空手道俱乐部，34 节点 78 边 |
+| 海豚社群网络.csv | dolphins.csv | Lusseau (2003) 海豚关联网络，62 节点 159 边 |
+| 世界杯球员俱乐部.csv | football_worldcup.csv | 2022 世界杯八强 45 名球员 → 22 家俱乐部（导入后切有向） |
+| 国际贸易流向.json | trade_directed.json | 14 经济体出口流向（有向加权，十亿美元量级） |
+| 区域输电网.csv | power_grid_mini.csv | 合成输电网 24 节点，边权=线路容量 |
+| 课堂意见网络.json | opinion_classroom.json | 12 人课堂讨论网（两个观点阵营 + 桥接者） |
+| 观点模型参数.json | opinion_models.params.json | 四个观点模型推荐参数 + 每人初始意见 |
+| 企业联盟网络.json | dynamic_alliance.json | 14 家企业合作网 t1 快照 |
+| 联盟三期快照参数.json | dynamic_alliance.params.json | t1–t3 三个快照 + Jaccard 阈值 |
+| 研究者合作属性网络.json | attributed_network.json | 20 位研究者合作网（topic 属性 + 4 维特征） |
+| 企业关系新闻文本.txt | enterprise_relations.txt | 新能源汽车产业链中文新闻 12 句 |
 
 ## 验证记录（2026-08-27，`python scripts/verify_datasets.py` 实测）
 
 全部 18 项通过：
 
-- `karate_club.txt` → 导入 34 节点 78 边；`community.louvain` 完成（4 社区）；`robustness.attack(degree 蓄意攻击)` 完成；`centrality.betweenness` 完成（最高节点 0，0.438）
-- `dolphins.csv` → 导入 62 节点 159 边；`community.cpm(clique_size=3)` 重叠社区完成；`link_prediction.adamic_adar` 完成
-- `football_worldcup.csv` → 导入 71 节点 45 边；切有向后 `centrality.degree` 出/入度完成
-- `trade_directed.json` → 导入 14 节点 41 边（有向）；`centrality.pagerank` 完成
-- `power_grid_mini.csv` → 导入 24 节点 33 边；`robustness.attack(random)` 完成
-- `opinion_classroom.json` + `opinion_models.params.json` → `opinion.degroot` 收敛（方差 6.1e-07）；`opinion.hk` 极化（最终极差 0.59）
-- `dynamic_alliance.json` + `dynamic_alliance.params.json` → `community.dynamic` 识别出**延续 / 分裂 / 合并**三类事件（快照拓扑已按 Louvain 自动检测校准）
-- `attributed_network.json` → `embedding.gcn` 嵌入聚类完成（`embedding.ae/cnn/gat` 参数结构相同）
-- `enterprise_relations.txt` → `text.extract` 抽出 24 个实体、12 条关系、1 组同指合并（华为/华为公司）
+- 空手道俱乐部网络.txt → 导入 34 节点 78 边；community.louvain 完成（4 社区）；robustness.attack(degree 蓄意攻击) 完成；centrality.betweenness 完成（最高节点 0，0.438）
+- 海豚社群网络.csv → 导入 62 节点 159 边；community.cpm(clique_size=3) 重叠社区完成；link_prediction.adamic_adar 完成
+- 世界杯球员俱乐部.csv → 导入 71 节点 45 边；切有向后 centrality.degree 出/入度完成
+- 国际贸易流向.json → 导入 14 节点 41 边（有向）；centrality.pagerank 完成
+- 区域输电网.csv → 导入 24 节点 33 边；robustness.attack(random) 完成
+- 课堂意见网络.json + 观点模型参数.json → opinion.degroot 收敛（方差 6.1e-07）；opinion.hk 极化（最终极差 0.59）
+- 企业联盟网络.json + 联盟三期快照参数.json → community.dynamic 识别出**延续 / 分裂 / 合并**三类事件（快照拓扑已按 Louvain 自动检测校准）
+- 研究者合作属性网络.json → embedding.gcn 嵌入聚类完成（embedding.ae/cnn/gat 参数结构相同）
+- 企业关系新闻文本.txt → text.extract 抽出 24 个实体、12 条关系、1 组同指合并（华为/华为公司）
 
-## 数据来源与引用
+## 重新生成与数据来源
 
-- 空手道俱乐部：W. W. Zachary (1977). An information flow model for conflict and fission in small groups. *J. Anthropol. Res.* 33, 452–473（NetworkX BSD-3 内置）。
-- 海豚社群：D. Lusseau, K. Schneider et al. (2003). The bottlenose dolphin community of Doubtful Sound features a large proportion of long-lasting associations. *Behav. Ecol. Sociobiol.* 54, 396–405。
-- 世界杯球员效力关系依据公开报道整理（2022 卡塔尔世界杯八强大名单）。
-- 贸易权重依据 2023 年公开贸易统计的量级整理，用于教学演示，非精确值。
+- 生成器：`python scripts/make_datasets.py` 重新生成本文件夹全部数据（含实验子文件夹）；校验：后端在本地 8000 端口运行时执行 `python scripts/verify_datasets.py`。
+- 空手道俱乐部：W. W. Zachary (1977). *J. Anthropol. Res.* 33, 452–473（NetworkX BSD-3 内置）。
+- 海豚社群：D. Lusseau et al. (2003). *Behav. Ecol. Sociobiol.* 54, 396–405。
+- 世界杯球员效力关系依据公开报道整理（2022 卡塔尔世界杯八强大名单）；贸易权重依据 2023 年公开贸易统计量级整理，用于教学演示。
 - 电网、课堂意见、企业联盟、研究者合作网络为按教学目标构造的合成数据。

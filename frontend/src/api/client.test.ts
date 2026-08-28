@@ -55,6 +55,25 @@ describe('public API client', () => {
     expect(new Headers(init?.headers).has('Content-Type')).toBe(false)
   })
 
+  test('attaches the session CSRF token to state-changing requests only', async () => {
+    document.cookie = 'csrftoken=test-token; path=/'
+    try {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+        valid: true, errors: [], graph: exampleGraph,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+
+      await fetchAlgorithms()
+      await validateGraph(exampleGraph)
+
+      const [, getInit] = vi.mocked(fetch).mock.calls[0]
+      const [, postInit] = vi.mocked(fetch).mock.calls[1]
+      expect(new Headers(getInit?.headers).has('X-CSRFToken')).toBe(false)
+      expect(new Headers(postInit?.headers).get('X-CSRFToken')).toBe('test-token')
+    } finally {
+      document.cookie = 'csrftoken=; Max-Age=0; path=/'
+    }
+  })
+
   test('calls the public idempotent cancellation endpoint', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
       id: 'run-1', status: 'cancelled', algorithm: 'centrality.degree', seed: 7,

@@ -10,6 +10,8 @@ from django.db import transaction
 from django.http import Http404, HttpResponse, JsonResponse
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework.parsers import MultiPartParser
 from rest_framework.permissions import AllowAny
 from rest_framework import status
@@ -153,11 +155,15 @@ def run_payload(run: Run) -> dict[str, Any]:
     return {"id": str(run.id), "status": run.status, "algorithm": run.algorithm, "seed": run.seed}
 
 
+# Every entry page of the SPA calls one of these GETs first; seeding the CSRF
+# cookie here lets the browser answer DRF's session-authenticated POSTs.
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class ModuleListView(APIView):
     def get(self, request: Request) -> Response:
         return Response([module_payload(module, detail=False) for module in public_modules()])
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class ModuleDetailView(APIView):
     def get(self, request: Request, slug: str) -> Response:
         try:
@@ -167,11 +173,13 @@ class ModuleDetailView(APIView):
         return Response(module_payload(module, detail=True))
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class CaseListView(APIView):
     def get(self, request: Request) -> Response:
         return Response([case_payload(case, detail=False) for case in public_cases().select_related("module")])
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class CaseDetailView(APIView):
     def get(self, request: Request, slug: str) -> Response:
         try:
@@ -195,6 +203,7 @@ class GraphValidationView(APIView):
         return Response({"valid": True, "errors": [], "graph": graph})
 
 
+@method_decorator(ensure_csrf_cookie, name="dispatch")
 class AlgorithmListView(APIView):
     def get(self, request: Request) -> Response:
         return Response(ALGORITHM_REGISTRY)

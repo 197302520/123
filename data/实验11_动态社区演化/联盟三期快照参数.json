@@ -1,5 +1,5 @@
 {
-  "_说明": "配合 dynamic_alliance.json：导入基线图后，把 snapshots 与 threshold 复制到 community.dynamic 的参数编辑器。",
+  "_说明": "配合 企业联盟网络.json：导入基线图后，把 snapshots 与 threshold 复制到 community.dynamic 的参数编辑器。",
   "community.dynamic": {
     "snapshots": [
       {

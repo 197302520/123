@@ -90,44 +90,72 @@ def case_definitions():
             "slug": "zachary-karate", "title": "Zachary 空手道俱乐部", "case_title": "空手道俱乐部网络",
             "summary": "用经典俱乐部关系检验社区边界。", "module": "communities",
             "provenance": "Wayne W. Zachary (1977), An Information Flow Model for Conflict and Fission in Small Groups；由 NetworkX karate_club_graph 打包。",
-            "metadata": {"source": "Zachary (1977)；NetworkX 3.x karate_club_graph", "license": "NetworkX BSD-3-Clause；原始事实拓扑按论文完整署名", "cleaning": "节点转为稳定字符串 ID；无向边权保留为数值", "version": "2026.08-v1", "graph": karate, "node_attributes": karate_attributes, "algorithm": "community.louvain", "parameters": {"resolution": 1.0}, "seed": 7},
+            "metadata": {"source": "Zachary (1977)；NetworkX 3.x karate_club_graph", "license": "NetworkX BSD-3-Clause；原始事实拓扑按论文完整署名", "cleaning": "节点转为稳定字符串 ID；无向边权保留为数值", "version": "2026.08-v1", "graph": karate, "node_attributes": karate_attributes, "algorithm": "community.louvain", "parameters": {"resolution": 1.0}, "seed": 7,
+                "demos": [
+                    {"algorithm": "community.compare", "label": "多算法社区发现对比", "focus": "看哪种算法的模块度 Q 最高；社区划分是否接近俱乐部真实的两派分裂？", "seed": 7},
+                    {"algorithm": "centrality.betweenness", "label": "中介中心性：找出桥梁人物", "focus": "谁的度不高却占据大量最短路？他是不是校长与教官之间的桥梁？", "seed": 7},
+                    {"algorithm": "robustness.attack", "label": "蓄意攻击下的网络韧性", "focus": "按度删点时 S(q) 曲线何时断崖？换随机攻击再对比一次", "parameters": {"strategy": "degree"}, "seed": 7},
+                ]},
         },
         {
             "slug": "dolphins", "title": "Sarasota 海豚社群网络（Lusseau 数据）", "case_title": "海豚社群重叠社区划分",
             "summary": "在真实海豚关联网络上用 CPM 派系渗透与 SLPA 划分重叠社区，并配合链路预测算法做对比实验。",
             "module": "communities",
             "provenance": "D. Lusseau, K. Schneider, O. J. Boisseau, P. Haase, E. Slooten & S. M. Dawson (2003), The bottlenose dolphin community of Doubtful Sound features a large proportion of long-lasting associations, Behavioral Ecology and Sociobiology 54:396-405；经 M. E. J. Newman 网络数据仓库（dolphins.gml）分发。野外观测地点为新西兰 Doubtful Sound，教学说明书沿用 Sarasota 海豚社群称谓。",
-            "metadata": {"source": "Lusseau et al. (2003)；Newman 网络数据仓库 dolphins.gml", "license": "学术引用使用：课堂教学须引用 Lusseau et al. (2003) 原文", "cleaning": "保留原始个体名称作为节点 ID；GML 节点编号映射为海豚名；边权统一为 1", "version": "2026.08-v2", "graph": dolphins, "algorithm": "community.cpm", "parameters": {"clique_size": 3}, "seed": 13},
+            "metadata": {"source": "Lusseau et al. (2003)；Newman 网络数据仓库 dolphins.gml", "license": "学术引用使用：课堂教学须引用 Lusseau et al. (2003) 原文", "cleaning": "保留原始个体名称作为节点 ID；GML 节点编号映射为海豚名；边权统一为 1", "version": "2026.08-v2", "graph": dolphins, "algorithm": "community.cpm", "parameters": {"clique_size": 3}, "seed": 13,
+                "demos": [
+                    {"algorithm": "community.cpm", "label": "CPM 派系过滤：重叠社区", "focus": "哪些海豚同时出现在两个社区？把 clique_size 改成 4 社区怎么变？", "parameters": {"clique_size": 3}, "seed": 13},
+                    {"algorithm": "link_prediction.adamic_adar", "label": "链路预测与防泄漏 AUC", "focus": "最可能新出现的海豚关联是哪几对？AUC 离 1 有多远？", "seed": 13},
+                ]},
         },
         {
             "slug": "football-bipartite", "title": "生成式球员—俱乐部二部网络", "case_title": "球员流动与俱乐部投影",
             "summary": "从球员—俱乐部隶属关系投影出球员共队网络。", "module": "network-basics",
             "provenance": "本项目生成的虚构球员与俱乐部隶属关系。",
-            "metadata": {"source": generated, "license": cc0, "cleaning": "二部图方向统一为球员→俱乐部；附带按共同俱乐部数加权的球员投影视图", "version": "2026.08-v2", "graph": football_source, "projection_graph": football_projection, "projection": "networkx weighted_projected_graph(players)", "algorithm": "centrality.hits", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5},
+            "metadata": {"source": generated, "license": cc0, "cleaning": "二部图方向统一为球员→俱乐部；附带按共同俱乐部数加权的球员投影视图", "version": "2026.08-v2", "graph": football_source, "projection_graph": football_projection, "projection": "networkx weighted_projected_graph(players)", "algorithm": "centrality.hits", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5,
+                "demos": [
+                    {"algorithm": "centrality.degree", "label": "二部网络的出度与入度", "focus": "球员的出度是效力俱乐部数，俱乐部的入度是拥有球员数——谁是转会枢纽？", "seed": 5},
+                    {"algorithm": "centrality.hits", "label": "HITS 枢纽-权威", "focus": "球员是枢纽（主动连接），俱乐部是权威（被指向）——两边排名各是谁？", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5},
+                ]},
         },
         {
             "slug": "enterprise-text", "title": "生成式企业关系文本", "case_title": "从企业文本抽取关系网络",
             "summary": "用可校正规则从中文企业叙述生成实体关系候选。", "module": "network-basics",
             "provenance": "本项目编写的虚构企业语句。",
-            "metadata": {"source": generated, "license": cc0, "cleaning": "NFKC 规范化；保留证据偏移；不含真实企业事实", "version": "2026.08-v1", "graph": empty_graph, "algorithm": "text.extract", "parameters": {"text": enterprise_text, "method": "rule", "embedding": "normalized", "model_path": ""}, "seed": 0},
+            "metadata": {"source": generated, "license": cc0, "cleaning": "NFKC 规范化；保留证据偏移；不含真实企业事实", "version": "2026.08-v1", "graph": empty_graph, "algorithm": "text.extract", "parameters": {"text": enterprise_text, "method": "rule", "embedding": "normalized", "model_path": ""}, "seed": 0,
+                "demos": [
+                    {"algorithm": "text.extract", "label": "文本抽取：实体、关系与同指合并", "focus": "数一数抽出多少家公司？『华为』和『华为公司』有没有被合并成一个节点？", "parameters": {"text": enterprise_text, "method": "rule", "embedding": "normalized", "merge_threshold": 0.6, "model_path": ""}, "seed": 0},
+                ]},
         },
         {
             "slug": "trade-snapshots", "title": "生成式贸易时间快照", "case_title": "贸易网络中的动态社群",
             "summary": "比较三个时间快照中的社群延续、分裂与合并。", "module": "dynamic-networks",
             "provenance": "本项目生成的六国贸易教学快照；权重为虚构课堂数值。",
-            "metadata": {"source": generated, "license": cc0, "cleaning": "统一国家名称；快照均为无向正权图", "version": "2026.08-v1", "graph": trade_snapshots[0], "algorithm": "community.dynamic", "parameters": {"snapshots": trade_snapshots, "snapshot_communities": [], "threshold": 0.3}, "seed": 17},
+            "metadata": {"source": generated, "license": cc0, "cleaning": "统一国家名称；快照均为无向正权图", "version": "2026.08-v1", "graph": trade_snapshots[0], "algorithm": "community.dynamic", "parameters": {"snapshots": trade_snapshots, "snapshot_communities": [], "threshold": 0.3}, "seed": 17,
+                "demos": [
+                    {"algorithm": "community.dynamic", "label": "三期快照：社群的延续与合并", "focus": "时间线里出现了哪几类事件？把阈值 0.3 改成 0.6 事件怎么变？", "parameters": {"snapshots": trade_snapshots, "snapshot_communities": [], "threshold": 0.3}, "seed": 17},
+                    {"algorithm": "community.louvain", "label": "基线快照的静态社区", "focus": "先看 t1 时刻有几个圈子，再对照动态事件理解‘从哪来、到哪去’", "seed": 17},
+                ]},
         },
         {
             "slug": "opinion-dynamics", "title": "生成式课堂意见网络", "case_title": "意见如何在关系中趋同",
             "summary": "运行 DeGroot 模型观察初始分歧的收敛轨迹。", "module": "diffusion",
             "provenance": "本项目生成的匿名角色网络与初始意见。",
-            "metadata": {"source": generated, "license": cc0, "cleaning": "角色使用甲乙丙丁戊己；意见缩放到 0–1", "version": "2026.08-v1", "graph": opinion_graph, "algorithm": "opinion.degroot", "parameters": {"opinions": {"甲": 0.1, "乙": 0.2, "丙": 0.35, "丁": 0.7, "戊": 0.85, "己": 0.95}, "max_iterations": 200, "tolerance": 1e-6}, "seed": 23},
+            "metadata": {"source": generated, "license": cc0, "cleaning": "角色使用甲乙丙丁戊己；意见缩放到 0–1", "version": "2026.08-v1", "graph": opinion_graph, "algorithm": "opinion.degroot", "parameters": {"opinions": {"甲": 0.1, "乙": 0.2, "丙": 0.35, "丁": 0.7, "戊": 0.85, "己": 0.95}, "max_iterations": 200, "tolerance": 1e-6}, "seed": 23,
+                "demos": [
+                    {"algorithm": "opinion.degroot", "label": "DeGroot：走向全体共识", "focus": "轨迹图上六条线最终汇聚了吗？观点方差归零了吗？", "parameters": {"opinions": {"甲": 0.1, "乙": 0.2, "丙": 0.35, "丁": 0.7, "戊": 0.85, "己": 0.95}, "max_iterations": 200, "tolerance": 1e-6}, "seed": 23},
+                    {"algorithm": "opinion.deffuant", "label": "Deffuant：有界信任与极化", "focus": "把信任阈值 confidence 调小到 0.15 再跑一次——班级分裂成几派？", "parameters": {"opinions": {"甲": 0.1, "乙": 0.2, "丙": 0.35, "丁": 0.7, "戊": 0.85, "己": 0.95}, "confidence": 0.15, "mu": 0.5, "steps": 500, "tolerance": 1e-6}, "seed": 23},
+                ]},
         },
         {
             "slug": "cora-citations", "title": "生成式 Cora 风格属性引用网络", "case_title": "属性论文引用与影响力",
             "summary": "在小型有向引用图上联合结构与主题特征生成属性嵌入。", "module": "network-measures",
             "provenance": "本项目生成的 Cora 风格结构；不复制 Cora 原始论文、标签或特征。",
-            "metadata": {"source": generated, "license": cc0, "cleaning": "虚构 paper ID；三维二值特征与主题标签嵌入节点 attributes", "version": "2026.08-v2", "graph": citation_graph, "algorithm": "embedding.ae", "parameters": {"clusters": 3, "embedding_dim": 2, "epochs": 40, "learning_rate": 0.03}, "seed": 29},
+            "metadata": {"source": generated, "license": cc0, "cleaning": "虚构 paper ID；三维二值特征与主题标签嵌入节点 attributes", "version": "2026.08-v2", "graph": citation_graph, "algorithm": "embedding.ae", "parameters": {"clusters": 3, "embedding_dim": 2, "epochs": 40, "learning_rate": 0.03}, "seed": 29,
+                "demos": [
+                    {"algorithm": "embedding.ae", "label": "自编码器嵌入聚类", "focus": "聚类结果和论文的主题标签一致吗？结构与属性各起了多大作用？", "parameters": {"clusters": 3, "embedding_dim": 2, "epochs": 40, "learning_rate": 0.03}, "seed": 29},
+                    {"algorithm": "centrality.pagerank", "label": "PageRank 引用影响力", "focus": "被高质量论文引用最多的‘核心文献’是哪篇？", "seed": 29},
+                ]},
         },
     ]
 

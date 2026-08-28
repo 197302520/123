@@ -237,6 +237,17 @@ textarea { resize: vertical; font-family: var(--mono); font-size: .78rem; line-h
 .case-next-step > div > p:last-child { margin-bottom: 0; color: var(--ink-soft); font-size: .9rem; }
 .example-network { margin: 0; }
 .example-network figcaption, .chart-grid figcaption, .overlay-grid figcaption { margin-top: .7rem; font-size: .76rem; color: var(--ink-soft); }
+.case-runner { display: grid; gap: 1.1rem; align-content: start; }
+.runner-intro { margin: 0; color: var(--ink-soft); font-size: .92rem; }
+.case-demo-card { display: grid; gap: .9rem; padding: 1.3rem 1.4rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm); }
+.demo-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.demo-head h3 { margin: 0; font-size: 1.06rem; }
+.demo-meta { margin: .3rem 0 0; color: var(--ink-soft); font-size: .82rem; }
+.demo-head .button { flex-shrink: 0; }
+.demo-focus { margin: 0; padding: .55rem .85rem; border-radius: var(--radius-sm); background: var(--brand-soft); color: var(--brand-deep); font-size: .9rem; }
+.demo-warnings { margin: 0; padding: .55rem .85rem; border-radius: var(--radius-sm); background: var(--accent-soft); color: #8a5a00; font-size: .88rem; }
+.demo-interpret-list { margin: 0; padding-left: 1.2rem; display: grid; gap: .7rem; font-size: .95rem; color: var(--ink); }
+.demo-interpret-list strong { color: var(--brand-deep); }
 .graph-canvas { width: 100%; min-height: 420px; border: 1px solid var(--line); border-radius: var(--radius-sm); background-color: var(--surface); background-image: url("data:image/svg+xml,%3Csvg width='28' height='28' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M28 0H0V28' fill='none' stroke='%23eef3f0' stroke-width='1'/%3E%3C/svg%3E"); }
 
 /* ===== 课堂演示模式（深绿投影） ===== */

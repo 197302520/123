@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, test, vi } from 'vitest'
 import CaseDetailView from './CaseDetailView.vue'
+import type { AlgorithmSpec, RunResult } from '../api/contracts'
 
 vi.mock('../api/client', () => ({
   fetchCase: vi.fn((slug: string) => Promise.resolve({
@@ -12,8 +13,45 @@ vi.mock('../api/client', () => ({
     content: '俱乐部在冲突后分裂成两个群体。',
     dataset: { slug: 'karate', title: 'Zachary 数据', provenance: 'Zachary (1977)', metadata: { nodes: 34, edges: 78 } },
   })),
+  fetchAlgorithms: vi.fn(() => Promise.resolve([])),
+  submitRun: vi.fn(),
+  fetchRunStatus: vi.fn(),
+  fetchRunResult: vi.fn(),
 }))
-import { fetchCase } from '../api/client'
+import { fetchAlgorithms, fetchCase, fetchRunResult, fetchRunStatus, submitRun } from '../api/client'
+
+const karateGraph = {
+  directed: false,
+  nodes: [{ id: '0', label: '校长' }, { id: '1', label: '教官' }],
+  edges: [{ source: '0', target: '1', weight: 2 }],
+}
+
+function stubBuiltInDemo() {
+  vi.mocked(fetchCase).mockResolvedValueOnce({
+    slug: 'karate', title: '空手道俱乐部网络', summary: '社区分裂的经典案例。', module: 'communities', content: '',
+    dataset: {
+      slug: 'karate', title: 'Zachary 数据', provenance: 'Zachary (1977)',
+      metadata: {
+        graph: karateGraph,
+        demos: [{ algorithm: 'centrality.degree', label: '度中心性：谁朋友最多', focus: '找朋友最多的节点。', seed: 7 }],
+      },
+    },
+  })
+  vi.mocked(fetchAlgorithms).mockResolvedValue([{
+    key: 'centrality.degree', name: '度中心性', supported_graph_types: ['undirected'],
+    parameters: {}, version: 'v1', description: '', limits: { max_nodes: 2000, max_edges: 20000 },
+    formula: '', explanation: '', advantages: [], limitations: [], module: 'network-measures',
+  } satisfies AlgorithmSpec])
+  vi.mocked(submitRun).mockResolvedValue({ id: 'run-1', status: 'pending', algorithm: 'centrality.degree', seed: 7 })
+  vi.mocked(fetchRunStatus).mockResolvedValue({ id: 'run-1', status: 'completed', algorithm: 'centrality.degree', seed: 7 })
+  const result: RunResult = {
+    run_id: 'run-1', status: 'completed',
+    tables: [{ key: 'degree', name: '度中心性', columns: ['node', 'value'], rows: [{ node: '0', value: 1 }] }],
+    overlays: [], charts: [], warnings: [], provenance: {},
+    validation: { valid: true, errors: [], graph: karateGraph },
+  }
+  vi.mocked(fetchRunResult).mockResolvedValue(result)
+}
 
 describe('six-section case learning flow', () => {
   test('exposes exactly six keyboard-navigable sections and changes the active lesson', async () => {
@@ -68,5 +106,42 @@ describe('six-section case learning flow', () => {
 
     expect(screen.getByRole('heading', { name: '海豚社交网络' })).toBeVisible()
     expect(screen.queryByRole('heading', { name: '过期空手道案例' })).not.toBeInTheDocument()
+  })
+
+  test('runs the built-in case analysis inline without leaving the case page', async () => {
+    const user = userEvent.setup()
+    stubBuiltInDemo()
+    render(CaseDetailView, {
+      props: { slug: 'karate' },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true } },
+    })
+    expect(await screen.findByRole('heading', { name: '空手道俱乐部网络' })).toBeVisible()
+
+    await user.click(screen.getByRole('tab', { name: '运行分析' }))
+    expect(await screen.findByText('度中心性：谁朋友最多')).toBeVisible()
+
+    await user.click(screen.getByRole('button', { name: '运行分析' }))
+
+    expect(submitRun).toHaveBeenCalledWith(
+      expect.objectContaining({ algorithm: 'centrality.degree', seed: 7 }),
+      undefined,
+    )
+    expect(await screen.findByRole('table')).toBeVisible()
+    expect(screen.getByRole('button', { name: '重新运行' })).toBeVisible()
+  })
+
+  test('explains the built-in demos in the interpretation section', async () => {
+    const user = userEvent.setup()
+    stubBuiltInDemo()
+    render(CaseDetailView, {
+      props: { slug: 'karate' },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true } },
+    })
+    expect(await screen.findByRole('heading', { name: '空手道俱乐部网络' })).toBeVisible()
+
+    await user.click(screen.getByRole('tab', { name: '解释发现' }))
+
+    expect(await screen.findByText(/对照「运行分析」/)).toBeVisible()
+    expect(screen.getByText(/度中心性：谁朋友最多/)).toBeVisible()
   })
 })

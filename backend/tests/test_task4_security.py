@@ -12,7 +12,7 @@ from django.core.cache import cache
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import IntegrityError, connection
 from django.db.models.query import QuerySet
-from django.test import RequestFactory, override_settings
+from django.test import Client, RequestFactory, override_settings
 from rest_framework.test import APIClient
 from openpyxl import Workbook
 
@@ -290,6 +290,34 @@ def test_teacher_api_rejects_basic_authentication_even_for_staff(api_client):
 
     assert response.status_code in {401, 403}
     assert not Case.objects.filter(slug="basic-bypass").exists()
+
+
+@pytest.mark.django_db
+def test_public_entry_gets_seed_the_csrf_cookie_for_the_spa(api_client):
+    """The SPA reads the csrftoken cookie before its first state-changing POST, so entry GETs must seed it."""
+    assert api_client.get("/api/algorithms/").status_code == 200
+    assert api_client.cookies["csrftoken"].value
+
+
+@pytest.mark.django_db
+def test_teacher_session_graph_post_needs_and_passes_the_csrf_header(client):
+    """After an /admin login, DRF enforces CSRF on public POSTs; the X-CSRFToken header must satisfy it."""
+    user = get_user_model().objects.create_user(
+        username="session-teacher", password="Strong-Teacher-Passphrase-2026!", is_staff=True,
+    )
+    strict = Client(enforce_csrf_checks=True)
+    strict.force_login(user)
+
+    rejected = strict.post("/api/graphs/validate/", SIMPLE_GRAPH, content_type="application/json")
+    assert rejected.status_code == 403
+    assert "CSRF" in rejected.json()["detail"]
+
+    assert strict.get("/api/algorithms/").status_code == 200
+    token = strict.cookies["csrftoken"].value
+    accepted = strict.post(
+        "/api/graphs/validate/", SIMPLE_GRAPH, content_type="application/json", HTTP_X_CSRFTOKEN=token,
+    )
+    assert accepted.status_code == 200
 
 
 @pytest.mark.django_db

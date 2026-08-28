@@ -19,6 +19,18 @@ docker compose --env-file .env.production -f compose.prod.yaml up -d postgres re
 
 链路预测的 `candidate_limit` 是准入上限，不是按节点 ID 截断的前缀：候选总数超过上限时拒绝运行；准入后使用有界堆遍历全部候选并返回全局 `top_k`，报告记录实际评估数。GraphML 复现包使用 `sna_graphspec_v1` 标记和 `sna_attributes_json` 属性信封；只有带该标记的文件会解码复杂属性，第三方同名普通标量不会被误解释。
 
+### 小内存主机（2核4G）适配
+
+`.env.production` 中设置 `GUNICORN_WORKERS=2` 与 `CELERY_CONCURRENCY=2`（默认值 3/4 面向 4核8G），把 Web 进程与并发算法子进程压到与 CPU 核数一致，避免内存换页拖慢课堂并发。前端镜像的 Vite 构建峰值内存较高，4GB 主机先创建 2GB swap 再执行 build：
+
+```sh
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+后续升配到 4核8G 时，把这两个变量改回 3/4 并 `docker compose ... up -d web worker` 即可，无需重建数据卷。
+
 ## HTTPS、域名与境内部署
 
 只在反向代理或负载均衡器终止 TLS 后开放服务，将公网 443 转发到本机 `127.0.0.1:8080`。外层代理必须删除客户端自带的转发头，并写入经验证的 `Host`、`X-Forwarded-Proto=https`、单一合法 IP 的 `X-Real-IP` 和规范化的 `X-Forwarded-For`；内层 Nginx 原样传递这些值，不用容器间 HTTP 或代理容器 IP 覆盖它们。Compose 的 frontend 只绑定 loopback，web 仅 expose 而不映射端口；不得让客户端或同机不可信服务绕过外层代理。若改变代理层数，必须同步调整 `DJANGO_NUM_PROXIES`。确认域名、证书自动续期、HSTS、可信来源与安全 Cookie 后再开放教师后台。若服务器或 CDN 节点位于中国境内，应在上线前向服务提供商确认 ICP 备案/公安备案及单位数据合规要求；境外部署仍需核对学校的数据分类与跨境政策。

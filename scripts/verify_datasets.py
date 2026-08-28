@@ -103,21 +103,21 @@ def check_import(filename: str, expect_nodes: int | None = None) -> dict:
 
 
 print("== 导入校验 ==")
-karate = check_import("karate_club.txt", 34)
-dolphins = check_import("dolphins.csv", 62)
-football = check_import("football_worldcup.csv")
-trade = check_import("trade_directed.json")
-grid = check_import("power_grid_mini.csv", 24)
+karate = check_import("实验03_基础拓扑与最短路/空手道俱乐部网络.txt", 34)
+dolphins = check_import("实验06_社区发现_重叠/海豚社群网络.csv", 62)
+football = check_import("实验04_中心性测度/世界杯球员俱乐部.csv")
+trade = check_import("实验04_中心性测度/国际贸易流向.json")
+grid = check_import("实验08_网络韧性攻击/区域输电网.csv", 24)
 
 # TXT/CSV 导入为无向：世界杯球员实验时需在实验室切换为有向。
 football_directed = {"directed": True, "nodes": football["nodes"], "edges": football["edges"]}
 
-opinion = json.loads((DATA / "opinion_classroom.json").read_text(encoding="utf-8"))
-dynamic_t1 = json.loads((DATA / "dynamic_alliance.json").read_text(encoding="utf-8"))
-attributed = json.loads((DATA / "attributed_network.json").read_text(encoding="utf-8"))
-opinion_params = json.loads((DATA / "opinion_models.params.json").read_text(encoding="utf-8"))
-dynamic_params = json.loads((DATA / "dynamic_alliance.params.json").read_text(encoding="utf-8"))
-enterprise_text = (DATA / "enterprise_relations.txt").read_text(encoding="utf-8")
+opinion = json.loads((DATA / "实验10_观点动力学/课堂意见网络.json").read_text(encoding="utf-8"))
+dynamic_t1 = json.loads((DATA / "实验11_动态社区演化/企业联盟网络.json").read_text(encoding="utf-8"))
+attributed = json.loads((DATA / "实验07_深度学习社区/研究者合作属性网络.json").read_text(encoding="utf-8"))
+opinion_params = json.loads((DATA / "实验10_观点动力学/观点模型参数.json").read_text(encoding="utf-8"))
+dynamic_params = json.loads((DATA / "实验11_动态社区演化/联盟三期快照参数.json").read_text(encoding="utf-8"))
+enterprise_text = (DATA / "实验01_文本抽取建网/企业关系新闻文本.txt").read_text(encoding="utf-8")
 
 print("== 算法实测 ==")
 

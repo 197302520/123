@@ -5,7 +5,8 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY config ./config
 COPY learning ./learning
-RUN pip install --no-cache-dir .
+ARG PIP_INDEX_URL=https://pypi.org/simple
+RUN pip install --no-cache-dir -i "$PIP_INDEX_URL" .
 COPY . .
 RUN DJANGO_SECRET_KEY=build-only DJANGO_DEBUG=0 python manage.py collectstatic --noinput
 EXPOSE 8000

@@ -1,5 +1,5 @@
 {
-  "_说明": "配合 opinion_classroom.json：导入图后按算法复制对应参数块到「参数」编辑器；opinions 是每个节点的初始意见（0–1）。",
+  "_说明": "配合 课堂意见网络.json：导入图后按算法复制对应参数块到「参数」编辑器；opinions 是每个节点的初始意见（0–1）。",
   "opinion.degroot": {
     "opinions": {
       "S1": 0.15,
