@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CaseDetail, GraphSpec } from '../api/contracts'
+import CaseDatasetBrief from './CaseDatasetBrief.vue'
 import CaseDemoCard from './CaseDemoCard.vue'
 
 const props = defineProps<{ detail: CaseDetail }>()
@@ -32,8 +33,24 @@ const demos = computed(() => {
 <template>
   <div class="case-runner">
     <template v-if="caseGraph && demos.length">
-      <p class="runner-intro">这些是本案例内置的真实算法，参数已按案例配好——点「运行分析」就地出结果；想改参数、换算法，再用页面底部的实验室入口。</p>
-      <CaseDemoCard v-for="demo in demos" :key="`${demo.algorithm}-${demo.label}`" v-bind="demo" :graph="caseGraph" />
+      <CaseDatasetBrief :dataset="detail.dataset" :graph="caseGraph" />
+      <section class="runner-demos" aria-labelledby="runner-demos-title">
+        <header class="runner-demos-head">
+          <div>
+            <p class="eyebrow">BUILT-IN RUNS · 内置分析</p>
+            <h2 id="runner-demos-title">参数已按案例配好，就地运行</h2>
+          </div>
+          <p class="runner-demos-note">每个任务都用上方这份真实数据在服务器上完成计算；想换成自己的数据、修改参数或跨算法对比，用页面底部的「去实验室自由探索」。</p>
+        </header>
+        <div class="runner-demo-list">
+          <CaseDemoCard
+            v-for="demo in demos"
+            :key="`${demo.algorithm}-${demo.label}`"
+            v-bind="demo"
+            :graph="caseGraph"
+          />
+        </div>
+      </section>
     </template>
     <p v-else class="state-message compact" role="status">
       本案例暂未配置内置分析；请用页面底部「去实验室自由探索」载入案例数据后运行。

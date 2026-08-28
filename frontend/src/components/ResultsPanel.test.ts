@@ -13,6 +13,8 @@ describe('real result rendering', () => {
     render(ResultsPanel, { props: { result: completedResult }, global: { stubs } })
 
     expect(screen.getByRole('table', { name: '节点中心性' })).toHaveTextContent('0.5')
+    expect(screen.getByTitle('原始字段名：node')).toHaveTextContent('节点')
+    expect(screen.getByTitle('原始字段名：value')).toHaveTextContent('数值')
     expect(screen.getByRole('img', { name: '结果图表：ranking' })).toBeVisible()
     expect(screen.getByRole('img', { name: '结果网络叠加图' })).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent('孤立节点不会贡献连接。')

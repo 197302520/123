@@ -58,7 +58,7 @@ describe('six-section case learning flow', () => {
     const user = userEvent.setup()
     render(CaseDetailView, {
       props: { slug: 'karate' },
-      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true } },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true, GraphCanvas: true } },
     })
 
     expect(await screen.findByRole('heading', { name: '空手道俱乐部网络' })).toBeVisible()
@@ -77,7 +77,7 @@ describe('six-section case learning flow', () => {
   test('reloads when the case route parameter changes', async () => {
     const view = render(CaseDetailView, {
       props: { slug: 'karate' },
-      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true } },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true, GraphCanvas: true } },
     })
     expect(await screen.findByRole('heading', { name: '空手道俱乐部网络' })).toBeVisible()
 
@@ -96,7 +96,7 @@ describe('six-section case learning flow', () => {
       })
     const view = render(CaseDetailView, {
       props: { slug: 'karate' },
-      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true } },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true, GraphCanvas: true } },
     })
 
     await view.rerender({ slug: 'dolphins' })
@@ -113,12 +113,13 @@ describe('six-section case learning flow', () => {
     stubBuiltInDemo()
     render(CaseDetailView, {
       props: { slug: 'karate' },
-      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true } },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true, GraphCanvas: true } },
     })
     expect(await screen.findByRole('heading', { name: '空手道俱乐部网络' })).toBeVisible()
 
     await user.click(screen.getByRole('tab', { name: '运行分析' }))
     expect(await screen.findByText('度中心性：谁朋友最多')).toBeVisible()
+    expect(screen.getByRole('heading', { name: 'Zachary 数据' })).toBeVisible()
 
     await user.click(screen.getByRole('button', { name: '运行分析' }))
 
@@ -126,7 +127,7 @@ describe('six-section case learning flow', () => {
       expect.objectContaining({ algorithm: 'centrality.degree', seed: 7 }),
       undefined,
     )
-    expect(await screen.findByRole('table')).toBeVisible()
+    expect(await screen.findByRole('table', { name: '度中心性' })).toBeVisible()
     expect(screen.getByRole('button', { name: '重新运行' })).toBeVisible()
   })
 
@@ -135,7 +136,7 @@ describe('six-section case learning flow', () => {
     stubBuiltInDemo()
     render(CaseDetailView, {
       props: { slug: 'karate' },
-      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true } },
+      global: { stubs: { RouterLink: { template: '<a><slot /></a>' }, ExampleNetwork: true, GraphCanvas: true } },
     })
     expect(await screen.findByRole('heading', { name: '空手道俱乐部网络' })).toBeVisible()
 

@@ -76,7 +76,7 @@ watch(() => props.slug, load, { immediate: true })
         </div>
       </nav>
 
-      <section :id="`panel-${CASE_SECTIONS[activeIndex].id}`" class="case-section-panel" role="tabpanel" :aria-labelledby="`tab-${CASE_SECTIONS[activeIndex].id}`" tabindex="0">
+      <section :id="`panel-${CASE_SECTIONS[activeIndex].id}`" :class="['case-section-panel', { 'run-stage': activeIndex === 3 }]" role="tabpanel" :aria-labelledby="`tab-${CASE_SECTIONS[activeIndex].id}`" tabindex="0">
         <div class="case-reading"><p class="eyebrow">{{ CASE_SECTIONS[activeIndex].eyebrow }}</p><h2>{{ CASE_SECTIONS[activeIndex].heading }}</h2><p>{{ CASE_SECTIONS[activeIndex].body }}</p><ol><li v-for="prompt in CASE_SECTIONS[activeIndex].prompts" :key="prompt">{{ prompt }}</li></ol></div>
         <aside v-if="activeIndex === 1" class="dataset-note"><p class="eyebrow">DATASET NOTE</p><h3>{{ detail.dataset?.title ?? '自带数据' }}</h3><p>{{ detail.dataset?.provenance ?? '数据来源需由学习者说明。' }}</p><dl v-if="datasetFacts.length"><template v-for="[key, value] in datasetFacts" :key="key"><dt>{{ key }}</dt><dd>{{ value }}</dd></template></dl></aside>
         <CaseRunner v-else-if="activeIndex === 3" :detail="detail" />

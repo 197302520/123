@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { GraphInputSpec, HistoryRecord, RunOverlay, RunResult } from '../api/contracts'
+import { columnLabel } from '../lab/columnLabels'
 import GraphCanvas from './GraphCanvas.vue'
 import ResultChart from './ResultChart.vue'
 
@@ -128,6 +129,7 @@ const tableComparisons = computed(() => {
     <p v-if="!hasArtifacts(result)" class="state-message empty">本次算法没有返回表格、图表或网络叠加层。</p>
 
     <div v-if="result.tables.length" class="result-section"><h3>数据表</h3>
+      <p class="table-note">表头为中文对照，悬停可查看原始字段名（导出文件与复现包中使用原始字段名）。</p>
       <template v-for="table in result.tables" :key="table.key">
         <div v-if="table.key === 'export'" class="export-cards">
           <div v-for="(row, index) in table.rows" :key="index" class="export-card">
@@ -135,7 +137,7 @@ const tableComparisons = computed(() => {
             <button type="button" class="button secondary" @click="downloadExport(row)">下载 {{ row.filename }}</button>
           </div>
         </div>
-        <div v-else class="table-scroll"><table :aria-label="table.name"><caption>{{ table.name }}</caption><thead><tr><th v-for="column in table.columns" :key="column" scope="col">{{ column }}</th></tr></thead><tbody><tr v-for="(row, index) in table.rows" :key="index"><td v-for="column in table.columns" :key="column">{{ display(row[column]) }}</td></tr></tbody></table></div>
+        <div v-else class="table-scroll"><table :aria-label="table.name"><caption>{{ table.name }}</caption><thead><tr><th v-for="column in table.columns" :key="column" scope="col" :title="`原始字段名：${column}`">{{ columnLabel(column) }}</th></tr></thead><tbody><tr v-for="(row, index) in table.rows" :key="index"><td v-for="column in table.columns" :key="column">{{ display(row[column]) }}</td></tr></tbody></table></div>
       </template>
     </div>
     <div v-if="result.charts.length" class="result-section"><h3>图表</h3><div class="chart-grid"><figure v-for="chart in result.charts" :key="chart.key"><ResultChart :chart="chart" /><figcaption>{{ chart.key }} · {{ chart.type }}</figcaption></figure></div></div>
