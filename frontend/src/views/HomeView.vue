@@ -19,34 +19,37 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="home-view section-shell">
-    <!-- 平台是什么 + 行动入口 -->
+  <div class="home-view">
+    <!-- 平台是什么 + 行动入口（背景全宽，内容走统一外壳） -->
     <section class="hero" aria-labelledby="hero-title">
-      <div class="hero-copy">
-        <p class="eyebrow">《社会网络分析》课程 · 智能教学平台</p>
-        <h1 id="hero-title">把关系数据交给算法，<br><em>得到可信的<wbr>网络分析结论</em></h1>
-        <p class="hero-intro">
-          这是一套覆盖社会网络分析全流程的教学平台：从中文文本中抽取关系建网，
-          或直接导入你自己的网络数据，一键运行 42 种算法——中心性、社区发现、链路预测、
-          网络韧性、观点演化仿真——并生成图表与分析报告，适合课程作业、课堂实验与课程设计。
-        </p>
-        <div class="hero-actions">
-          <RouterLink class="button primary" to="/courses">按模块学习算法</RouterLink>
-          <RouterLink class="button secondary" to="/cases">先浏览教学案例</RouterLink>
-          <RouterLink class="button ghost" to="/lab">直达自由实验室</RouterLink>
+      <div class="hero-inner">
+        <div class="hero-copy">
+          <p class="eyebrow">《社会网络分析》课程 · 智能教学平台</p>
+          <h1 id="hero-title">把关系数据交给算法，<br><em>得到可信的<wbr>网络分析结论</em></h1>
+          <p class="hero-intro">
+            这是一套覆盖社会网络分析全流程的教学平台：从中文文本中抽取关系建网，
+            或直接导入你自己的网络数据，一键运行 42 种算法——中心性、社区发现、链路预测、
+            网络韧性、观点演化仿真——并生成图表与分析报告，适合课程作业、课堂实验与课程设计。
+          </p>
+          <div class="hero-actions">
+            <RouterLink class="button primary" to="/courses">按模块学习算法</RouterLink>
+            <RouterLink class="button secondary" to="/cases">先浏览教学案例</RouterLink>
+            <RouterLink class="button ghost" to="/lab">直达自由实验室</RouterLink>
+          </div>
         </div>
-      </div>
-      <div class="hero-panel">
-        <NetworkHero />
-        <div class="hero-stats">
-          <div class="stat-card"><strong>42</strong><span>种分析算法</span></div>
-          <div class="stat-card"><strong>7</strong><span>个课程模块</span></div>
-          <div class="stat-card"><strong>7</strong><span>个教学案例</span></div>
-          <div class="stat-card"><strong>6</strong><span>步案例研习</span></div>
+        <div class="hero-panel">
+          <NetworkHero />
+          <div class="hero-stats">
+            <div class="stat-card"><strong>42</strong><span>种分析算法</span></div>
+            <div class="stat-card"><strong>7</strong><span>个课程模块</span></div>
+            <div class="stat-card"><strong>7</strong><span>个教学案例</span></div>
+            <div class="stat-card"><strong>6</strong><span>步案例研习</span></div>
+          </div>
         </div>
       </div>
     </section>
 
+    <div class="section-shell home-body">
     <!-- 平台公告条 -->
     <div class="notice-bar" role="note" aria-label="平台公告">
       <span class="notice-tag">公告</span>
@@ -118,5 +121,6 @@ onMounted(async () => {
         </RouterLink>
       </div>
     </section>
+    </div>
   </div>
 </template>

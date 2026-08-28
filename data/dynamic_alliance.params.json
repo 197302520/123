@@ -1,0 +1,540 @@
+{
+  "_说明": "配合 dynamic_alliance.json：导入基线图后，把 snapshots 与 threshold 复制到 community.dynamic 的参数编辑器。",
+  "community.dynamic": {
+    "snapshots": [
+      {
+        "directed": false,
+        "nodes": [
+          {
+            "id": "A1",
+            "label": "A1"
+          },
+          {
+            "id": "A2",
+            "label": "A2"
+          },
+          {
+            "id": "A3",
+            "label": "A3"
+          },
+          {
+            "id": "A4",
+            "label": "A4"
+          },
+          {
+            "id": "A5",
+            "label": "A5"
+          },
+          {
+            "id": "A6",
+            "label": "A6"
+          },
+          {
+            "id": "B1",
+            "label": "B1"
+          },
+          {
+            "id": "B2",
+            "label": "B2"
+          },
+          {
+            "id": "B3",
+            "label": "B3"
+          },
+          {
+            "id": "B4",
+            "label": "B4"
+          },
+          {
+            "id": "B5",
+            "label": "B5"
+          },
+          {
+            "id": "B6",
+            "label": "B6"
+          },
+          {
+            "id": "B7",
+            "label": "B7"
+          }
+        ],
+        "edges": [
+          {
+            "source": "A1",
+            "target": "A2",
+            "weight": 3
+          },
+          {
+            "source": "A2",
+            "target": "A3",
+            "weight": 3
+          },
+          {
+            "source": "A3",
+            "target": "A4",
+            "weight": 3
+          },
+          {
+            "source": "A4",
+            "target": "A5",
+            "weight": 3
+          },
+          {
+            "source": "A5",
+            "target": "A6",
+            "weight": 3
+          },
+          {
+            "source": "A1",
+            "target": "A3",
+            "weight": 3
+          },
+          {
+            "source": "A2",
+            "target": "A4",
+            "weight": 3
+          },
+          {
+            "source": "A3",
+            "target": "A5",
+            "weight": 3
+          },
+          {
+            "source": "A4",
+            "target": "A6",
+            "weight": 3
+          },
+          {
+            "source": "A1",
+            "target": "A6",
+            "weight": 3
+          },
+          {
+            "source": "B1",
+            "target": "B2",
+            "weight": 3
+          },
+          {
+            "source": "B1",
+            "target": "B3",
+            "weight": 3
+          },
+          {
+            "source": "B2",
+            "target": "B3",
+            "weight": 3
+          },
+          {
+            "source": "B4",
+            "target": "B5",
+            "weight": 3
+          },
+          {
+            "source": "B4",
+            "target": "B6",
+            "weight": 3
+          },
+          {
+            "source": "B4",
+            "target": "B7",
+            "weight": 2
+          },
+          {
+            "source": "B5",
+            "target": "B6",
+            "weight": 3
+          },
+          {
+            "source": "B5",
+            "target": "B7",
+            "weight": 3
+          },
+          {
+            "source": "B6",
+            "target": "B7",
+            "weight": 3
+          },
+          {
+            "source": "B1",
+            "target": "B4",
+            "weight": 3
+          },
+          {
+            "source": "B2",
+            "target": "B5",
+            "weight": 3
+          },
+          {
+            "source": "B3",
+            "target": "B6",
+            "weight": 2
+          },
+          {
+            "source": "B2",
+            "target": "B4",
+            "weight": 2
+          },
+          {
+            "source": "B3",
+            "target": "B5",
+            "weight": 2
+          },
+          {
+            "source": "A6",
+            "target": "B7",
+            "weight": 1
+          }
+        ]
+      },
+      {
+        "directed": false,
+        "nodes": [
+          {
+            "id": "A1",
+            "label": "A1"
+          },
+          {
+            "id": "A2",
+            "label": "A2"
+          },
+          {
+            "id": "A3",
+            "label": "A3"
+          },
+          {
+            "id": "A4",
+            "label": "A4"
+          },
+          {
+            "id": "A5",
+            "label": "A5"
+          },
+          {
+            "id": "A6",
+            "label": "A6"
+          },
+          {
+            "id": "B1",
+            "label": "B1"
+          },
+          {
+            "id": "B2",
+            "label": "B2"
+          },
+          {
+            "id": "B3",
+            "label": "B3"
+          },
+          {
+            "id": "B4",
+            "label": "B4"
+          },
+          {
+            "id": "B5",
+            "label": "B5"
+          },
+          {
+            "id": "B6",
+            "label": "B6"
+          },
+          {
+            "id": "B7",
+            "label": "B7"
+          }
+        ],
+        "edges": [
+          {
+            "source": "A1",
+            "target": "A2",
+            "weight": 3
+          },
+          {
+            "source": "A2",
+            "target": "A3",
+            "weight": 3
+          },
+          {
+            "source": "A3",
+            "target": "A4",
+            "weight": 3
+          },
+          {
+            "source": "A4",
+            "target": "A5",
+            "weight": 3
+          },
+          {
+            "source": "A5",
+            "target": "A6",
+            "weight": 3
+          },
+          {
+            "source": "A1",
+            "target": "A3",
+            "weight": 3
+          },
+          {
+            "source": "A2",
+            "target": "A4",
+            "weight": 3
+          },
+          {
+            "source": "A3",
+            "target": "A5",
+            "weight": 3
+          },
+          {
+            "source": "A4",
+            "target": "A6",
+            "weight": 3
+          },
+          {
+            "source": "A1",
+            "target": "A6",
+            "weight": 3
+          },
+          {
+            "source": "B1",
+            "target": "B2",
+            "weight": 3
+          },
+          {
+            "source": "B1",
+            "target": "B3",
+            "weight": 3
+          },
+          {
+            "source": "B2",
+            "target": "B3",
+            "weight": 3
+          },
+          {
+            "source": "B4",
+            "target": "B5",
+            "weight": 3
+          },
+          {
+            "source": "B4",
+            "target": "B6",
+            "weight": 3
+          },
+          {
+            "source": "B4",
+            "target": "B7",
+            "weight": 2
+          },
+          {
+            "source": "B5",
+            "target": "B6",
+            "weight": 3
+          },
+          {
+            "source": "B5",
+            "target": "B7",
+            "weight": 3
+          },
+          {
+            "source": "B6",
+            "target": "B7",
+            "weight": 3
+          },
+          {
+            "source": "A6",
+            "target": "B7",
+            "weight": 1
+          }
+        ]
+      },
+      {
+        "directed": false,
+        "nodes": [
+          {
+            "id": "A1",
+            "label": "A1"
+          },
+          {
+            "id": "A2",
+            "label": "A2"
+          },
+          {
+            "id": "A3",
+            "label": "A3"
+          },
+          {
+            "id": "A4",
+            "label": "A4"
+          },
+          {
+            "id": "A5",
+            "label": "A5"
+          },
+          {
+            "id": "A6",
+            "label": "A6"
+          },
+          {
+            "id": "B1",
+            "label": "B1"
+          },
+          {
+            "id": "B2",
+            "label": "B2"
+          },
+          {
+            "id": "B3",
+            "label": "B3"
+          },
+          {
+            "id": "B4",
+            "label": "B4"
+          },
+          {
+            "id": "B5",
+            "label": "B5"
+          },
+          {
+            "id": "B6",
+            "label": "B6"
+          },
+          {
+            "id": "B7",
+            "label": "B7"
+          }
+        ],
+        "edges": [
+          {
+            "source": "A1",
+            "target": "A2",
+            "weight": 3
+          },
+          {
+            "source": "A2",
+            "target": "A3",
+            "weight": 3
+          },
+          {
+            "source": "A3",
+            "target": "A4",
+            "weight": 3
+          },
+          {
+            "source": "A4",
+            "target": "A5",
+            "weight": 3
+          },
+          {
+            "source": "A5",
+            "target": "A6",
+            "weight": 3
+          },
+          {
+            "source": "A1",
+            "target": "A3",
+            "weight": 3
+          },
+          {
+            "source": "A2",
+            "target": "A4",
+            "weight": 3
+          },
+          {
+            "source": "A3",
+            "target": "A5",
+            "weight": 3
+          },
+          {
+            "source": "A4",
+            "target": "A6",
+            "weight": 3
+          },
+          {
+            "source": "A1",
+            "target": "A6",
+            "weight": 3
+          },
+          {
+            "source": "B1",
+            "target": "B2",
+            "weight": 3
+          },
+          {
+            "source": "B1",
+            "target": "B3",
+            "weight": 3
+          },
+          {
+            "source": "B2",
+            "target": "B3",
+            "weight": 3
+          },
+          {
+            "source": "B4",
+            "target": "B5",
+            "weight": 3
+          },
+          {
+            "source": "B4",
+            "target": "B6",
+            "weight": 3
+          },
+          {
+            "source": "B4",
+            "target": "B7",
+            "weight": 2
+          },
+          {
+            "source": "B5",
+            "target": "B6",
+            "weight": 3
+          },
+          {
+            "source": "B5",
+            "target": "B7",
+            "weight": 3
+          },
+          {
+            "source": "B6",
+            "target": "B7",
+            "weight": 3
+          },
+          {
+            "source": "A1",
+            "target": "B1",
+            "weight": 4
+          },
+          {
+            "source": "A2",
+            "target": "B2",
+            "weight": 4
+          },
+          {
+            "source": "A3",
+            "target": "B3",
+            "weight": 4
+          },
+          {
+            "source": "A4",
+            "target": "B1",
+            "weight": 4
+          },
+          {
+            "source": "A5",
+            "target": "B2",
+            "weight": 4
+          },
+          {
+            "source": "A6",
+            "target": "B3",
+            "weight": 4
+          },
+          {
+            "source": "A6",
+            "target": "B7",
+            "weight": 1
+          }
+        ]
+      }
+    ],
+    "threshold": 0.3
+  }
+}

@@ -3,14 +3,15 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import CourseLibraryView from './CourseLibraryView.vue'
 import HomeView from './HomeView.vue'
 
-vi.mock('../api/client', () => ({ fetchModules: vi.fn(), fetchCases: vi.fn() }))
-import { fetchCases, fetchModules } from '../api/client'
+vi.mock('../api/client', () => ({ fetchModules: vi.fn(), fetchCases: vi.fn(), fetchAlgorithms: vi.fn() }))
+import { fetchAlgorithms, fetchCases, fetchModules } from '../api/client'
 
 const global = { stubs: { RouterLink: { template: '<a><slot /></a>' } } }
 
 beforeEach(() => {
   vi.mocked(fetchModules).mockResolvedValue([])
   vi.mocked(fetchCases).mockResolvedValue([])
+  vi.mocked(fetchAlgorithms).mockResolvedValue([])
 })
 
 describe('successful empty catalog states', () => {

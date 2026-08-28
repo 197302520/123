@@ -1,0 +1,268 @@
+{
+  "directed": true,
+  "nodes": [
+    {
+      "id": "中国",
+      "label": "中国"
+    },
+    {
+      "id": "美国",
+      "label": "美国"
+    },
+    {
+      "id": "欧盟",
+      "label": "欧盟"
+    },
+    {
+      "id": "东盟",
+      "label": "东盟"
+    },
+    {
+      "id": "日本",
+      "label": "日本"
+    },
+    {
+      "id": "韩国",
+      "label": "韩国"
+    },
+    {
+      "id": "加拿大",
+      "label": "加拿大"
+    },
+    {
+      "id": "墨西哥",
+      "label": "墨西哥"
+    },
+    {
+      "id": "英国",
+      "label": "英国"
+    },
+    {
+      "id": "俄罗斯",
+      "label": "俄罗斯"
+    },
+    {
+      "id": "印度",
+      "label": "印度"
+    },
+    {
+      "id": "澳大利亚",
+      "label": "澳大利亚"
+    },
+    {
+      "id": "巴西",
+      "label": "巴西"
+    },
+    {
+      "id": "沙特",
+      "label": "沙特"
+    }
+  ],
+  "edges": [
+    {
+      "source": "中国",
+      "target": "美国",
+      "weight": 50
+    },
+    {
+      "source": "中国",
+      "target": "欧盟",
+      "weight": 51
+    },
+    {
+      "source": "中国",
+      "target": "东盟",
+      "weight": 59
+    },
+    {
+      "source": "中国",
+      "target": "日本",
+      "weight": 16
+    },
+    {
+      "source": "中国",
+      "target": "韩国",
+      "weight": 15
+    },
+    {
+      "source": "美国",
+      "target": "欧盟",
+      "weight": 36
+    },
+    {
+      "source": "美国",
+      "target": "加拿大",
+      "weight": 35
+    },
+    {
+      "source": "美国",
+      "target": "墨西哥",
+      "weight": 32
+    },
+    {
+      "source": "美国",
+      "target": "日本",
+      "weight": 8
+    },
+    {
+      "source": "美国",
+      "target": "韩国",
+      "weight": 7
+    },
+    {
+      "source": "欧盟",
+      "target": "美国",
+      "weight": 46
+    },
+    {
+      "source": "欧盟",
+      "target": "英国",
+      "weight": 34
+    },
+    {
+      "source": "欧盟",
+      "target": "中国",
+      "weight": 24
+    },
+    {
+      "source": "欧盟",
+      "target": "俄罗斯",
+      "weight": 10
+    },
+    {
+      "source": "日本",
+      "target": "中国",
+      "weight": 12
+    },
+    {
+      "source": "日本",
+      "target": "美国",
+      "weight": 13
+    },
+    {
+      "source": "日本",
+      "target": "欧盟",
+      "weight": 8
+    },
+    {
+      "source": "韩国",
+      "target": "中国",
+      "weight": 15
+    },
+    {
+      "source": "韩国",
+      "target": "美国",
+      "weight": 11
+    },
+    {
+      "source": "韩国",
+      "target": "欧盟",
+      "weight": 6
+    },
+    {
+      "source": "东盟",
+      "target": "中国",
+      "weight": 21
+    },
+    {
+      "source": "东盟",
+      "target": "美国",
+      "weight": 18
+    },
+    {
+      "source": "东盟",
+      "target": "欧盟",
+      "weight": 14
+    },
+    {
+      "source": "俄罗斯",
+      "target": "中国",
+      "weight": 11
+    },
+    {
+      "source": "俄罗斯",
+      "target": "欧盟",
+      "weight": 6
+    },
+    {
+      "source": "俄罗斯",
+      "target": "印度",
+      "weight": 9
+    },
+    {
+      "source": "印度",
+      "target": "美国",
+      "weight": 8
+    },
+    {
+      "source": "印度",
+      "target": "欧盟",
+      "weight": 7
+    },
+    {
+      "source": "印度",
+      "target": "中国",
+      "weight": 3
+    },
+    {
+      "source": "英国",
+      "target": "美国",
+      "weight": 6
+    },
+    {
+      "source": "英国",
+      "target": "欧盟",
+      "weight": 15
+    },
+    {
+      "source": "英国",
+      "target": "中国",
+      "weight": 4
+    },
+    {
+      "source": "加拿大",
+      "target": "美国",
+      "weight": 43
+    },
+    {
+      "source": "墨西哥",
+      "target": "美国",
+      "weight": 47
+    },
+    {
+      "source": "澳大利亚",
+      "target": "中国",
+      "weight": 16
+    },
+    {
+      "source": "澳大利亚",
+      "target": "日本",
+      "weight": 8
+    },
+    {
+      "source": "巴西",
+      "target": "中国",
+      "weight": 12
+    },
+    {
+      "source": "巴西",
+      "target": "美国",
+      "weight": 8
+    },
+    {
+      "source": "巴西",
+      "target": "欧盟",
+      "weight": 9
+    },
+    {
+      "source": "沙特",
+      "target": "中国",
+      "weight": 10
+    },
+    {
+      "source": "沙特",
+      "target": "欧盟",
+      "weight": 8
+    }
+  ]
+}

@@ -1,0 +1,402 @@
+{
+  "directed": false,
+  "nodes": [
+    {
+      "id": "P01",
+      "label": "P01",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.526,
+          0.151,
+          0.621,
+          0.407
+        ]
+      }
+    },
+    {
+      "id": "P02",
+      "label": "P02",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.508,
+          0.38,
+          0.406,
+          0.632
+        ]
+      }
+    },
+    {
+      "id": "P03",
+      "label": "P03",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.184,
+          0.173,
+          0.667,
+          0.057
+        ]
+      }
+    },
+    {
+      "id": "P04",
+      "label": "P04",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.046,
+          0.864,
+          0.189,
+          0.69
+        ]
+      }
+    },
+    {
+      "id": "P05",
+      "label": "P05",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.772,
+          0.889,
+          0.645,
+          0.809
+        ]
+      }
+    },
+    {
+      "id": "P06",
+      "label": "P06",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.043,
+          0.301,
+          0.776,
+          0.894
+        ]
+      }
+    },
+    {
+      "id": "P07",
+      "label": "P07",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.165,
+          0.01,
+          0.332,
+          0.436
+        ]
+      }
+    },
+    {
+      "id": "P08",
+      "label": "P08",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.853,
+          0.577,
+          0.763,
+          0.128
+        ]
+      }
+    },
+    {
+      "id": "P09",
+      "label": "P09",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.347,
+          0.905,
+          0.097,
+          0.852
+        ]
+      }
+    },
+    {
+      "id": "P10",
+      "label": "P10",
+      "attributes": {
+        "topic": "A",
+        "features": [
+          0.99,
+          0.462,
+          0.232,
+          0.702
+        ]
+      }
+    },
+    {
+      "id": "P11",
+      "label": "P11",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.869,
+          0.054,
+          0.427,
+          0.795
+        ]
+      }
+    },
+    {
+      "id": "P12",
+      "label": "P12",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.391,
+          0.414,
+          0.734,
+          0.003
+        ]
+      }
+    },
+    {
+      "id": "P13",
+      "label": "P13",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.346,
+          0.696,
+          0.947,
+          0.781
+        ]
+      }
+    },
+    {
+      "id": "P14",
+      "label": "P14",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.664,
+          0.564,
+          0.19,
+          0.468
+        ]
+      }
+    },
+    {
+      "id": "P15",
+      "label": "P15",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.222,
+          0.956,
+          0.096,
+          0.874
+        ]
+      }
+    },
+    {
+      "id": "P16",
+      "label": "P16",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.561,
+          0.887,
+          0.827,
+          0.465
+        ]
+      }
+    },
+    {
+      "id": "P17",
+      "label": "P17",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.198,
+          0.658,
+          0.438,
+          0.474
+        ]
+      }
+    },
+    {
+      "id": "P18",
+      "label": "P18",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.77,
+          0.558,
+          0.822,
+          0.036
+        ]
+      }
+    },
+    {
+      "id": "P19",
+      "label": "P19",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.282,
+          0.767,
+          0.962,
+          0.209
+        ]
+      }
+    },
+    {
+      "id": "P20",
+      "label": "P20",
+      "attributes": {
+        "topic": "B",
+        "features": [
+          0.071,
+          0.697,
+          0.741,
+          0.433
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "P01",
+      "target": "P02",
+      "weight": 2
+    },
+    {
+      "source": "P01",
+      "target": "P03",
+      "weight": 3
+    },
+    {
+      "source": "P02",
+      "target": "P03",
+      "weight": 2
+    },
+    {
+      "source": "P03",
+      "target": "P04",
+      "weight": 2
+    },
+    {
+      "source": "P04",
+      "target": "P05",
+      "weight": 3
+    },
+    {
+      "source": "P04",
+      "target": "P06",
+      "weight": 1
+    },
+    {
+      "source": "P05",
+      "target": "P06",
+      "weight": 2
+    },
+    {
+      "source": "P05",
+      "target": "P07",
+      "weight": 2
+    },
+    {
+      "source": "P06",
+      "target": "P08",
+      "weight": 1
+    },
+    {
+      "source": "P07",
+      "target": "P08",
+      "weight": 2
+    },
+    {
+      "source": "P07",
+      "target": "P09",
+      "weight": 3
+    },
+    {
+      "source": "P08",
+      "target": "P09",
+      "weight": 2
+    },
+    {
+      "source": "P09",
+      "target": "P10",
+      "weight": 2
+    },
+    {
+      "source": "P10",
+      "target": "P11",
+      "weight": 1
+    },
+    {
+      "source": "P11",
+      "target": "P12",
+      "weight": 2
+    },
+    {
+      "source": "P11",
+      "target": "P13",
+      "weight": 3
+    },
+    {
+      "source": "P12",
+      "target": "P13",
+      "weight": 2
+    },
+    {
+      "source": "P13",
+      "target": "P14",
+      "weight": 2
+    },
+    {
+      "source": "P14",
+      "target": "P15",
+      "weight": 3
+    },
+    {
+      "source": "P14",
+      "target": "P16",
+      "weight": 1
+    },
+    {
+      "source": "P15",
+      "target": "P16",
+      "weight": 2
+    },
+    {
+      "source": "P15",
+      "target": "P17",
+      "weight": 2
+    },
+    {
+      "source": "P16",
+      "target": "P18",
+      "weight": 1
+    },
+    {
+      "source": "P17",
+      "target": "P18",
+      "weight": 2
+    },
+    {
+      "source": "P17",
+      "target": "P19",
+      "weight": 3
+    },
+    {
+      "source": "P18",
+      "target": "P19",
+      "weight": 2
+    },
+    {
+      "source": "P19",
+      "target": "P20",
+      "weight": 2
+    }
+  ]
+}

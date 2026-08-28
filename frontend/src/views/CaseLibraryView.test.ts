@@ -4,13 +4,17 @@ import { beforeEach, describe, expect, test, vi } from 'vitest'
 import CaseLibraryView from './CaseLibraryView.vue'
 import { cases } from '../test/fixtures'
 
-vi.mock('../api/client', () => ({ fetchCases: vi.fn() }))
-import { fetchCases } from '../api/client'
+vi.mock('../api/client', () => ({ fetchCases: vi.fn(), fetchCase: vi.fn() }))
+import { fetchCase, fetchCases } from '../api/client'
 
 const RouterLinkStub = { props: ['to'], template: '<a href="#"><slot /></a>' }
 
 describe('case library filtering', () => {
-  beforeEach(() => vi.mocked(fetchCases).mockResolvedValue(cases))
+  beforeEach(() => {
+    vi.mocked(fetchCases).mockResolvedValue(cases)
+    // 数据集缩略图是渐进增强：详情失败时列表照常渲染。
+    vi.mocked(fetchCase).mockRejectedValue(new Error('detail unavailable'))
+  })
 
   test('combines module and keyword filters and can clear them', async () => {
     const user = userEvent.setup()

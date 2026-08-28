@@ -1,0 +1,140 @@
+{
+  "directed": false,
+  "nodes": [
+    {
+      "id": "S1",
+      "label": "S1"
+    },
+    {
+      "id": "S2",
+      "label": "S2"
+    },
+    {
+      "id": "S3",
+      "label": "S3"
+    },
+    {
+      "id": "S4",
+      "label": "S4"
+    },
+    {
+      "id": "S5",
+      "label": "S5"
+    },
+    {
+      "id": "S6",
+      "label": "S6"
+    },
+    {
+      "id": "S7",
+      "label": "S7"
+    },
+    {
+      "id": "S8",
+      "label": "S8"
+    },
+    {
+      "id": "S9",
+      "label": "S9"
+    },
+    {
+      "id": "S10",
+      "label": "S10"
+    },
+    {
+      "id": "S11",
+      "label": "S11"
+    },
+    {
+      "id": "S12",
+      "label": "S12"
+    }
+  ],
+  "edges": [
+    {
+      "source": "S1",
+      "target": "S2",
+      "weight": 3
+    },
+    {
+      "source": "S1",
+      "target": "S3",
+      "weight": 2
+    },
+    {
+      "source": "S2",
+      "target": "S3",
+      "weight": 3
+    },
+    {
+      "source": "S2",
+      "target": "S4",
+      "weight": 2
+    },
+    {
+      "source": "S3",
+      "target": "S5",
+      "weight": 2
+    },
+    {
+      "source": "S4",
+      "target": "S5",
+      "weight": 3
+    },
+    {
+      "source": "S4",
+      "target": "S6",
+      "weight": 2
+    },
+    {
+      "source": "S5",
+      "target": "S6",
+      "weight": 3
+    },
+    {
+      "source": "S6",
+      "target": "S7",
+      "weight": 1
+    },
+    {
+      "source": "S7",
+      "target": "S8",
+      "weight": 3
+    },
+    {
+      "source": "S7",
+      "target": "S9",
+      "weight": 2
+    },
+    {
+      "source": "S8",
+      "target": "S9",
+      "weight": 3
+    },
+    {
+      "source": "S8",
+      "target": "S10",
+      "weight": 2
+    },
+    {
+      "source": "S9",
+      "target": "S11",
+      "weight": 2
+    },
+    {
+      "source": "S10",
+      "target": "S11",
+      "weight": 3
+    },
+    {
+      "source": "S10",
+      "target": "S12",
+      "weight": 2
+    },
+    {
+      "source": "S11",
+      "target": "S12",
+      "weight": 3
+    }
+  ]
+}
