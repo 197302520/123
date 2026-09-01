@@ -22,7 +22,7 @@
       <div class="footer-col">
         <h3>平台说明</h3>
         <span>42 种真实算法</span>
-        <span>7 个教学案例</span>
+        <span>8 个教学案例</span>
         <span>实验记录仅存本机 · 结果可复现</span>
         <span>匿名可用 · 每次运行留证据链</span>
       </div>

@@ -42,7 +42,7 @@ onMounted(async () => {
           <div class="hero-stats">
             <div class="stat-card"><strong>42</strong><span>种分析算法</span></div>
             <div class="stat-card"><strong>7</strong><span>个课程模块</span></div>
-            <div class="stat-card"><strong>7</strong><span>个教学案例</span></div>
+            <div class="stat-card"><strong>8</strong><span>个教学案例</span></div>
             <div class="stat-card"><strong>6</strong><span>步案例研习</span></div>
           </div>
         </div>
