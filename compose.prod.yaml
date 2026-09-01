@@ -84,7 +84,10 @@ services:
       redis: {condition: service_healthy}
 
   beat:
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
     restart: unless-stopped
     command: celery -A config beat --loglevel=info
     environment: *backend-environment

@@ -54,17 +54,18 @@ def test_dolphin_case_uses_real_sarasota_teaching_network_with_cpm_overlap(api_c
 
 
 @pytest.mark.django_db
-def test_seed_is_idempotent_and_all_seven_provenanced_cases_run_real_algorithms(api_client):
+def test_seed_is_idempotent_and_all_eight_provenanced_cases_run_real_algorithms(api_client):
     """Dropping a graph/algorithm/provenance field would make a seeded case non-runnable."""
     call_command("seed_learning_content")
     call_command("seed_learning_content")
 
-    assert Case.objects.count() == 7
+    assert Case.objects.count() == 8
     expected = {
-        "zachary-karate", "dolphins", "football-bipartite", "enterprise-text",
+        "zachary-karate", "dolphins", "football-wc1998", "football-wc2002", "enterprise-text",
         "trade-snapshots", "opinion-dynamics", "cora-citations",
     }
     assert set(Case.objects.values_list("slug", flat=True)) == expected
+    assert not Dataset.objects.filter(slug="football-bipartite").exists()
 
     for slug in sorted(expected):
         case_response = api_client.get(f"/api/cases/{slug}/")
@@ -91,13 +92,25 @@ def test_seed_is_idempotent_and_all_seven_provenanced_cases_run_real_algorithms(
         assert len(result["provenance"]["graph_hash"]) == 64
         assert len(result["provenance"]["parameter_hash"]) == 64
 
-        if slug == "football-bipartite":
-            kinds = {node["id"]: node["attributes"]["kind"] for node in metadata["graph"]["nodes"]}
-            assert metadata["graph"]["directed"] is True
-            assert all(kinds[edge["source"]] == "player" and kinds[edge["target"]] == "club" for edge in metadata["graph"]["edges"])
+        if slug.startswith("football-wc"):
+            year = "1998" if slug.endswith("1998") else "2002"
+            graph = metadata["graph"]
+            assert graph["directed"] is True
+            assert len(graph["nodes"]) == (35 if year == "1998" else 44)
+            assert len(graph["edges"]) == (118 if year == "1998" else 147)
+            assert sum(edge["weight"] for edge in graph["edges"]) == (295 if year == "1998" else 356)
+            assert all(node["label"] != node["id"] for node in graph["nodes"])
+            assert all(node["attributes"]["code"] == node["id"] for node in graph["nodes"])
+            flows = {(edge["source"], edge["target"]): edge["weight"] for edge in graph["edges"]}
+            if year == "1998":
+                assert flows[("NOR", "GBR")] == 12
+            else:
+                assert flows[("IRL", "ENG")] == 22
             assert metadata["algorithm"] == "centrality.hits"
-            assert metadata["projection_graph"]["edges"]
-            assert {"hub", "authority"} <= set(result["tables"][0]["rows"][0])
+            rows = result["tables"][0]["rows"]
+            assert {"hub", "authority"} <= set(rows[0])
+            top_authority = max(rows, key=lambda row: row["authority"])["node"]
+            assert top_authority == ("ESP" if year == "1998" else "ENG")
         if slug == "cora-citations":
             assert all(len(node["attributes"]["features"]) == 3 for node in metadata["graph"]["nodes"])
             assert metadata["algorithm"] == "embedding.ae"

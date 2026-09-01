@@ -2,10 +2,16 @@ from __future__ import annotations
 
 import networkx as nx
 from django.core.management.base import BaseCommand
-from networkx.algorithms import bipartite
 
 from learning.algorithms.graph import nx_to_graph
 from learning.data.sarasota_dolphins import EDGES as DOLPHIN_EDGES, NODES as DOLPHIN_NODES
+from learning.data.worldcup_football import (
+    CODE_INFO as FOOTBALL_CODE_INFO,
+    WC1998_EDGES,
+    WC1998_NODES,
+    WC2002_EDGES,
+    WC2002_NODES,
+)
 from learning.models import Case, CourseModule, Dataset, PublishStatus
 
 
@@ -31,30 +37,30 @@ def graph(nodes, edges, *, directed=False):
     }
 
 
+def football_network(nodes, edges):
+    return {
+        "directed": True,
+        "nodes": [
+            {
+                "id": code,
+                "label": FOOTBALL_CODE_INFO[code][0],
+                "attributes": {"code": code, "continent": FOOTBALL_CODE_INFO[code][1]},
+            }
+            for code in nodes
+        ],
+        "edges": [
+            {"source": source, "target": target, "weight": float(weight)}
+            for source, target, weight in edges
+        ],
+    }
+
+
 def case_definitions():
     karate_network = nx.karate_club_graph()
     karate = nx_to_graph(karate_network)
     karate_attributes = {str(node): {"faction": values["club"]} for node, values in karate_network.nodes(data=True)}
 
     dolphins = graph(DOLPHIN_NODES, ((*edge, 1) for edge in DOLPHIN_EDGES))
-
-    memberships = {
-        "P1": ["C1", "C2"], "P2": ["C1"], "P3": ["C1", "C2"], "P4": ["C2", "C3"],
-        "P5": ["C3"], "P6": ["C3", "C4"], "P7": ["C4"], "P8": ["C2", "C4"],
-    }
-    bipartite_network = nx.Graph()
-    bipartite_network.add_nodes_from(memberships, bipartite="player")
-    clubs = sorted({club for values in memberships.values() for club in values})
-    bipartite_network.add_nodes_from(clubs, bipartite="club")
-    bipartite_network.add_edges_from((player, club) for player, values in memberships.items() for club in values)
-    projection = bipartite.weighted_projected_graph(bipartite_network, sorted(memberships))
-    football_projection = nx_to_graph(projection)
-    football_source = {
-        "directed": True,
-        "nodes": ([{"id": player, "label": player, "attributes": {"kind": "player"}} for player in memberships]
-                  + [{"id": club, "label": club, "attributes": {"kind": "club"}} for club in clubs]),
-        "edges": [{"source": player, "target": club, "weight": 1.0} for player, values in memberships.items() for club in values],
-    }
 
     empty_graph = {"directed": True, "nodes": [], "edges": []}
     enterprise_text = "云帆科技与星河数据建立联合实验室。青松资本投资云帆科技。星河数据向海岳制造提供数据服务。"
@@ -109,13 +115,27 @@ def case_definitions():
                 ]},
         },
         {
-            "slug": "football-bipartite", "title": "生成式球员—俱乐部二部网络", "case_title": "球员流动与俱乐部投影",
-            "summary": "从球员—俱乐部隶属关系投影出球员共队网络。", "module": "network-basics",
-            "provenance": "本项目生成的虚构球员与俱乐部隶属关系。",
-            "metadata": {"source": generated, "license": cc0, "cleaning": "二部图方向统一为球员→俱乐部；附带按共同俱乐部数加权的球员投影视图", "version": "2026.08-v2", "graph": football_source, "projection_graph": football_projection, "projection": "networkx weighted_projected_graph(players)", "algorithm": "centrality.hits", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5,
+            "slug": "football-wc1998", "title": "1998 法国世界杯球员流动网络", "case_title": "世界杯国脚的跨国流动（1998）",
+            "summary": "把每支国家队阵容按球员效力俱乐部的所在国连成有向加权网络：谁是球员输出国，哪个联赛吸纳了全世界。",
+            "module": "network-basics",
+            "provenance": "Pajek datasets（V. Batagelj & A. Mrvar，http://vlado.fmf.uni-lj.si/pub/networks/data/）的 football.net（1998 法国世界杯；SuiteSparse 收录名 World Soccer, Paris 1998）：35 个国家/地区、118 条弧。边权为该届世界杯阵容中效力东道国联赛的球员人数，全员本土踢球的阵容不形成边（如沙特阿拉伯，故无节点）；未参赛但吸纳外国国脚的联赛国家只有入边。由任课教师提供的课堂数据文件转换，可用 scripts/make_worldcup_data.py 复现。",
+            "metadata": {"source": "任课教师课堂数据：Pajek datasets football.net（Batagelj & Mrvar）", "license": "学术引用使用：课堂教学须注明 Batagelj & Mrvar Pajek datasets 出处", "cleaning": "保留原文件节点代码、弧方向与权重；节点附中文译名与大洲属性；节点按原文件编号顺序排列", "version": "2026.09-v1", "graph": football_network(WC1998_NODES, WC1998_EDGES), "algorithm": "centrality.hits", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5,
                 "demos": [
-                    {"algorithm": "centrality.degree", "label": "二部网络的出度与入度", "focus": "球员的出度是效力俱乐部数，俱乐部的入度是拥有球员数——谁是转会枢纽？", "seed": 5},
-                    {"algorithm": "centrality.hits", "label": "HITS 枢纽-权威", "focus": "球员是枢纽（主动连接），俱乐部是权威（被指向）——两边排名各是谁？", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5},
+                    {"algorithm": "centrality.degree", "label": "度中心性：球员流动中的枢纽国家", "focus": "总度数高的国家是单纯输出、单纯吸纳，还是两者兼备？对照有向边的方向读出净流出与净流入。", "seed": 5},
+                    {"algorithm": "centrality.hits", "label": "HITS 枢纽-权威：输出国对阵东道国", "focus": "枢纽值高＝大量向外输送国脚的国家，权威值高＝吸纳各国国脚的联赛强国——1998 年的权威榜首是谁？", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5},
+                    {"algorithm": "centrality.pagerank", "label": "PageRank：联赛影响力榜单", "focus": "把 PageRank 排名与 HITS 权威榜对照：前几名一致吗？为什么亚非国家的国脚几乎只流向同一批欧洲联赛？", "seed": 5},
+                ]},
+        },
+        {
+            "slug": "football-wc2002", "title": "2002 韩日世界杯球员流动网络", "case_title": "世界杯国脚的跨国流动（2002）",
+            "summary": "同一套球员流动网络推进到韩日世界杯：44 个国家/地区、147 条流动关系，看四年之间联赛格局的变化。",
+            "module": "network-basics",
+            "provenance": "Pajek datasets（V. Batagelj & A. Mrvar，http://vlado.fmf.uni-lj.si/pub/networks/data/）的 football2002.net（2002 韩日世界杯）：44 个国家/地区、147 条弧。边权为该届世界杯阵容中效力东道国联赛的球员人数，全员本土踢球的阵容不形成边；未参赛但吸纳外国国脚的联赛国家（如荷兰、克罗地亚）只有入边。由任课教师提供的课堂数据文件转换，可用 scripts/make_worldcup_data.py 复现。",
+            "metadata": {"source": "任课教师课堂数据：Pajek datasets football2002.net（Batagelj & Mrvar）", "license": "学术引用使用：课堂教学须注明 Batagelj & Mrvar Pajek datasets 出处", "cleaning": "保留原文件节点代码、弧方向与权重；节点附中文译名与大洲属性；节点按原文件编号顺序排列", "version": "2026.09-v1", "graph": football_network(WC2002_NODES, WC2002_EDGES), "algorithm": "centrality.hits", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5,
+                "demos": [
+                    {"algorithm": "centrality.degree", "label": "度中心性：球员流动中的枢纽国家", "focus": "总度数高的国家是单纯输出、单纯吸纳，还是两者兼备？对照有向边的方向读出净流出与净流入。", "seed": 5},
+                    {"algorithm": "centrality.hits", "label": "HITS 枢纽-权威：输出国对阵东道国", "focus": "枢纽值高＝大量向外输送国脚的国家，权威值高＝吸纳各国国脚的联赛强国——2002 年的权威榜首换成了谁？", "parameters": {"max_iterations": 200, "tolerance": 1e-6}, "seed": 5},
+                    {"algorithm": "centrality.pagerank", "label": "PageRank：联赛影响力榜单", "focus": "塞内加尔 21 名国脚全部效力法甲，这样的『全队流向一条边』会怎样抬高法国的分数？和 1998 年的榜单比一比。", "seed": 5},
                 ]},
         },
         {
@@ -161,7 +181,7 @@ def case_definitions():
 
 
 class Command(BaseCommand):
-    help = "Idempotently seed seven modules and seven runnable, provenance-recorded cases."
+    help = "Idempotently seed seven modules and runnable, provenance-recorded cases."
 
     def handle(self, *args, **options):
         modules: dict[str, CourseModule] = {}
@@ -171,6 +191,11 @@ class Command(BaseCommand):
                 defaults={"title": title, "summary": summary, "order": order, "status": PublishStatus.PUBLISHED},
             )
             modules[slug] = module
+        # 教师以真实世界杯球员流动数据替换了生成式二部图案例，历史种子记录一并下线。
+        retired = Dataset.objects.filter(slug="football-bipartite")
+        if retired.exists():
+            Case.objects.filter(dataset=retired.first()).delete()
+            retired.delete()
         for definition in case_definitions():
             dataset, _ = Dataset.objects.update_or_create(
                 slug=definition["slug"],
@@ -188,4 +213,6 @@ class Command(BaseCommand):
                     "status": PublishStatus.PUBLISHED,
                 },
             )
-        self.stdout.write(self.style.SUCCESS("Seeded seven modules and seven runnable case records."))
+        self.stdout.write(self.style.SUCCESS(
+            f"Seeded {len(MODULES)} modules and {len(case_definitions())} runnable case records."
+        ))
