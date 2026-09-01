@@ -111,6 +111,12 @@ def test_seed_is_idempotent_and_all_eight_provenanced_cases_run_real_algorithms(
             assert {"hub", "authority"} <= set(rows[0])
             top_authority = max(rows, key=lambda row: row["authority"])["node"]
             assert top_authority == ("ESP" if year == "1998" else "ENG")
+            chart_keys = [entry["key"] for entry in result["charts"]]
+            assert chart_keys == ["authority_top", "hub_top", "hits_scatter"]
+            authority_bars = result["charts"][0]["series"][0]["data"]
+            assert authority_bars[0]["x"] == top_authority
+            assert len(authority_bars) == 10
+            assert result["charts"][2]["x_axis"] == "枢纽分 hub"
         if slug == "cora-citations":
             assert all(len(node["attributes"]["features"]) == 3 for node in metadata["graph"]["nodes"])
             assert metadata["algorithm"] == "embedding.ae"

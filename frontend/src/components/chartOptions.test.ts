@@ -49,6 +49,42 @@ describe('backend chart conversion', () => {
     expect(options.series[0]).toMatchObject({ type: 'scatter', data: [['1', 'birth'], ['2', 'merge']] })
   })
 
+  test('labels every scatter point with its node and explains both axes on hover', () => {
+    const options = chartOptions({
+      key: 'hits_scatter', type: 'scatter',
+      x_axis: '枢纽分 hub', y_axis: '权威分 authority',
+      series: [{ name: 'HITS', data: [
+        { x: 0.0517, y: 0.84050003, label: 'ENG' },
+        { x: 0.2, y: 0.1, label: 'ARG' },
+      ] }],
+    }, false) as Record<string, any>
+
+    expect(options.series[0].data).toEqual([
+      { name: 'ENG', value: [0.0517, 0.84050003] },
+      { name: 'ARG', value: [0.2, 0.1] },
+    ])
+    expect(options.tooltip.trigger).toBe('item')
+    expect(options.xAxis.name).toBe('枢纽分 hub')
+    expect(options.yAxis.name).toBe('权威分 authority')
+    const tooltip = options.tooltip.formatter({ name: 'ENG', value: [0.0517, 0.84050003] })
+    expect(tooltip).toContain('ENG')
+    expect(tooltip).toContain('枢纽分 hub：0.0517')
+    expect(tooltip).toContain('权威分 authority：0.8405')
+    expect(options.tooltip.formatter({ name: 'X', value: [0.1, null] })).toContain('—')
+  })
+
+  test('rotates crowded bar categories and formats tooltip values readably', () => {
+    const many = Array.from({ length: 14 }, (_, index) => ({ x: `n${index}`, y: 0.12345678 }))
+    const crowded = chartOptions({ key: 'ranking', type: 'bar', series: [{ name: '度中心性', data: many }] }, true) as Record<string, any>
+    expect(crowded.xAxis.axisLabel.rotate).toBe(45)
+    expect(crowded.grid.bottom).toBe(84)
+    expect(crowded.tooltip.valueFormatter(0.12345678)).toBe('0.1235')
+
+    const sparse = chartOptions({ key: 'ranking', type: 'bar', series: [{ name: '度中心性', data: [{ x: 'a', y: 1 }, { x: 'b', y: 2 }] }] }, true) as Record<string, any>
+    expect(sparse.xAxis.axisLabel.rotate).toBe(0)
+    expect(sparse.grid.bottom).toBe(54)
+  })
+
   test('keeps gauge value and series name together', () => {
     const options = chartOptions({
       key: 'centralization', type: 'gauge', series: [{ name: '度中心势', data: [{ value: 0.42 }] }],

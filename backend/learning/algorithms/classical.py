@@ -148,7 +148,7 @@ def _node_measure_bundle(network: nx.Graph | nx.DiGraph, values: dict[Any, float
     return {
         "tables": [table("nodes", name, rows)],
         "overlays": [overlay("node_values", nodes=rows)],
-        "charts": [chart("ranking", "bar", [{"name": name, "data": [{"x": row["node"], "y": row["value"]} for row in sorted(rows, key=lambda row: (-row["value"], row["node"]))]}])],
+        "charts": [chart("ranking", "bar", [{"name": name, "data": [{"x": row["node"], "y": row["value"]} for row in sorted(rows, key=lambda row: (-row["value"], row["node"]))]}], title=f"{name}排名（全部节点，从高到低）")],
     }
 
 
@@ -268,10 +268,19 @@ def run_classical(key: str, graph: dict[str, Any], params: dict[str, Any], seed:
     if key == "centrality.hits":
         hubs, authorities, iterations = _hits(network, params["max_iterations"], params["tolerance"])
         rows = [{"node": str(node), "hub": float(hubs[node]), "authority": float(authorities[node])} for node in sorted(network.nodes, key=str)]
+        authority_top = sorted(rows, key=lambda row: (-row["authority"], row["node"]))[:10]
+        hub_top = sorted(rows, key=lambda row: (-row["hub"], row["node"]))[:10]
         return {
             "tables": [table("nodes", "HITS 枢纽-权威", rows)],
             "overlays": [overlay("hits", nodes=rows)],
-            "charts": [chart("hits", "scatter", [{"name": "HITS", "data": [{"x": row["hub"], "y": row["authority"], "label": row["node"]} for row in rows]}])],
+            "charts": [
+                chart("authority_top", "bar", [{"name": "权威分 authority", "data": [{"x": row["node"], "y": row["authority"]} for row in authority_top]}],
+                      title="权威分 TOP10：被指向最多的节点"),
+                chart("hub_top", "bar", [{"name": "枢纽分 hub", "data": [{"x": row["node"], "y": row["hub"]} for row in hub_top]}],
+                      title="枢纽分 TOP10：指向别人最多的节点"),
+                chart("hits_scatter", "scatter", [{"name": "HITS", "data": [{"x": row["hub"], "y": row["authority"], "label": row["node"]} for row in rows]}],
+                      x_axis="枢纽分 hub", y_axis="权威分 authority", title="枢纽-权威散点"),
+            ],
             "provenance": {"iterations": iterations, "converged": True},
         }
     if key == "centralization.degree":

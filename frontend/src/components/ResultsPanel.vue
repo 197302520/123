@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { GraphInputSpec, HistoryRecord, RunOverlay, RunResult } from '../api/contracts'
+import type { GraphInputSpec, HistoryRecord, RunChart, RunOverlay, RunResult, RunTable } from '../api/contracts'
 import { columnLabel } from '../lab/columnLabels'
 import GraphCanvas from './GraphCanvas.vue'
 import ResultChart from './ResultChart.vue'
@@ -22,6 +22,35 @@ function display(value: unknown): string {
   if (typeof value === 'object') return JSON.stringify(value, null, 0)
   return String(value)
 }
+
+/** 课堂投影场景：点表头即可排序，第一下就是“从高到低”。 */
+const sortState = ref<Record<string, { column: string; direction: 1 | -1 }>>({})
+function toggleSort(table: RunTable, column: string) {
+  const current = sortState.value[table.key]
+  sortState.value[table.key] = current && current.column === column
+    ? { column, direction: current.direction === 1 ? -1 : 1 }
+    : { column, direction: -1 }
+}
+function sortedRows(table: RunTable) {
+  const state = sortState.value[table.key]
+  if (!state) return table.rows
+  return [...table.rows].sort((left, right) => {
+    const a = left[state.column]
+    const b = right[state.column]
+    if (typeof a === 'number' && typeof b === 'number') return (a - b) * state.direction
+    return String(a ?? '').localeCompare(String(b ?? ''), 'zh-Hans-CN') * state.direction
+  })
+}
+function sortIndicator(table: RunTable, column: string): string {
+  const state = sortState.value[table.key]
+  if (!state || state.column !== column) return '↕'
+  return state.direction === 1 ? '↑' : '↓'
+}
+
+const CHART_TYPE_LABELS: Record<string, string> = {
+  bar: '柱状图', line: '折线图', scatter: '散点图', heatmap: '热力图', gauge: '仪表盘', timeline: '事件时间线',
+}
+const chartCaption = (chart: RunChart) => `${chart.title ?? chart.key} · ${CHART_TYPE_LABELS[chart.type] ?? chart.type}`
 
 function downloadExport(row: Record<string, unknown>) {
   const filename = String(row.filename ?? 'network-export')
@@ -129,7 +158,7 @@ const tableComparisons = computed(() => {
     <p v-if="!hasArtifacts(result)" class="state-message empty">本次算法没有返回表格、图表或网络叠加层。</p>
 
     <div v-if="result.tables.length" class="result-section"><h3>数据表</h3>
-      <p class="table-note">表头为中文对照，悬停可查看原始字段名（导出文件与复现包中使用原始字段名）。</p>
+      <p class="table-note">表头为中文对照，悬停可查看原始字段名，点击表头可按该列排序（第一次点击为从高到低）。导出文件与复现包中使用原始字段名与完整精度数值。</p>
       <template v-for="table in result.tables" :key="table.key">
         <div v-if="table.key === 'export'" class="export-cards">
           <div v-for="(row, index) in table.rows" :key="index" class="export-card">
@@ -137,10 +166,10 @@ const tableComparisons = computed(() => {
             <button type="button" class="button secondary" @click="downloadExport(row)">下载 {{ row.filename }}</button>
           </div>
         </div>
-        <div v-else class="table-scroll"><table :aria-label="table.name"><caption>{{ table.name }}</caption><thead><tr><th v-for="column in table.columns" :key="column" scope="col" :title="`原始字段名：${column}`">{{ columnLabel(column) }}</th></tr></thead><tbody><tr v-for="(row, index) in table.rows" :key="index"><td v-for="column in table.columns" :key="column">{{ display(row[column]) }}</td></tr></tbody></table></div>
+        <div v-else class="table-scroll"><table :aria-label="table.name"><caption>{{ table.name }}</caption><thead><tr><th v-for="column in table.columns" :key="column" scope="col" :title="`原始字段名：${column}；点击排序`" :aria-sort="sortState[table.key]?.column === column ? (sortState[table.key]?.direction === 1 ? 'ascending' : 'descending') : 'none'" class="sortable" @click="toggleSort(table, column)"><span>{{ columnLabel(column) }}</span><span class="sort-mark" aria-hidden="true">{{ sortIndicator(table, column) }}</span></th></tr></thead><tbody><tr v-for="(row, index) in sortedRows(table)" :key="index"><td v-for="column in table.columns" :key="column">{{ display(row[column]) }}</td></tr></tbody></table></div>
       </template>
     </div>
-    <div v-if="result.charts.length" class="result-section"><h3>图表</h3><div class="chart-grid"><figure v-for="chart in result.charts" :key="chart.key"><ResultChart :chart="chart" /><figcaption>{{ chart.key }} · {{ chart.type }}</figcaption></figure></div></div>
+    <div v-if="result.charts.length" class="result-section"><h3>图表</h3><p class="table-note">散点与柱状图悬停可看节点名与数值；柱状图默认取排名前 10。</p><div class="chart-grid"><figure v-for="chart in result.charts" :key="chart.key"><ResultChart :chart="chart" /><figcaption>{{ chartCaption(chart) }}</figcaption></figure></div></div>
     <div v-if="result.overlays.length" class="result-section"><h3>网络叠加层</h3><label class="layout-select">可视化布局<select v-model="layoutName" aria-label="选择可视化布局"><option v-for="option in layoutOptions" :key="option.value" :value="option.value">{{ option.label }}</option></select></label><div class="overlay-grid"><figure v-for="overlay in result.overlays" :key="overlay.key"><GraphCanvas :graph="overlayGraph(overlay)" :overlay="overlay" :layout="layoutName" label="结果网络叠加图" /><figcaption>{{ overlayCaption(overlay) }}</figcaption></figure></div></div>
 
     <section v-if="comparable" class="compare-region" role="region" aria-label="实验结果对比">

@@ -239,6 +239,6 @@ def run_embedding(key: str, graph: dict[str, Any], params: dict[str, Any], seed:
     return {
         "tables": [table("embeddings", "节点嵌入与聚类", rows), table("training", "训练损失", [{"epoch": index + 1, "loss": loss} for index, loss in enumerate(losses)])],
         "overlays": [overlay("embedding_clusters", node_styles={row["node"]: {"community": row["cluster"]} for row in rows})],
-        "charts": [chart("embedding_scatter", "scatter", [{"name": "embedding", "data": scatter}]), chart("training_loss", "line", [{"name": "loss", "data": [{"x": index + 1, "y": loss} for index, loss in enumerate(losses)]}])],
+        "charts": [chart("embedding_scatter", "scatter", [{"name": "embedding", "data": scatter}], x_axis="嵌入维度 1", y_axis="嵌入维度 2", title="嵌入空间散点（颜色为聚类）"), chart("training_loss", "line", [{"name": "loss", "data": [{"x": index + 1, "y": loss} for index, loss in enumerate(losses)]}], title="训练损失曲线")],
         "provenance": {"device": "cpu", "trained": True, "epochs": epochs, "final_loss": losses[-1], "implementation": implementation, "kmeans_iterations": kmeans_iterations, "node_attribute_dimensions": attribute_dimensions},
     }

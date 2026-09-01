@@ -17,6 +17,14 @@ function base(animation: boolean) {
   }
 }
 
+/** 课堂投影可读的数值格式：最多 4 位小数，去掉尾随零。 */
+function formatMetric(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—'
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  return String(parseFloat(numeric.toFixed(4)))
+}
+
 function heatmap(chart: RunChart, animation: boolean) {
   const xLabels: string[] = []
   const yLabels: string[] = []
@@ -82,7 +90,7 @@ function gauge(chart: RunChart, animation: boolean) {
 }
 
 function standard(chart: RunChart, animation: boolean) {
-  const type = ['bar', 'line', 'scatter'].includes(chart.type) ? chart.type : 'line'
+  const type = ['bar', 'line'].includes(chart.type) ? chart.type : 'line'
   const categories: string[] = []
   const series = chart.series.map((item) => ({
     name: item.name,
@@ -93,14 +101,56 @@ function standard(chart: RunChart, animation: boolean) {
       if (!isRecord(datum)) return datum
       const x = text(datum.x ?? datum.label ?? datum.node, String(index + 1))
       if (!categories.includes(x)) categories.push(x)
-      const y = number(datum.y ?? datum.value ?? datum.score)
-      return type === 'scatter' ? [x, y] : y
+      return number(datum.y ?? datum.value ?? datum.score)
     }),
   }))
   return {
     ...base(animation),
-    xAxis: { type: type === 'scatter' ? 'value' : 'category', data: type === 'scatter' ? undefined : categories, axisLabel: { color: '#6b6459' } },
+    tooltip: { trigger: 'axis', valueFormatter: (value: unknown) => formatMetric(value) },
+    xAxis: {
+      type: 'category',
+      data: categories,
+      axisLabel: { color: '#6b6459', rotate: categories.length > 12 ? 45 : 0, fontSize: 11 },
+    },
     yAxis: { type: 'value', axisLabel: { color: '#6b6459' }, splitLine: { lineStyle: { color: '#e3ded2' } } },
+    grid: { left: 52, right: 24, top: 28, bottom: categories.length > 12 ? 84 : 54 },
+    series,
+  }
+}
+
+/**
+ * 节点级散点（HITS 枢纽-权威、嵌入空间）：每个点带节点名，
+ * 悬停只看这一个点——名字 + 两个维度，而不是整列原始小数。
+ * 轴含义由后端 chart.x_axis / chart.y_axis 说明。
+ */
+function nodeScatter(chart: RunChart, animation: boolean) {
+  const xLabel = text(chart.x_axis, 'x')
+  const yLabel = text(chart.y_axis, 'y')
+  const series = chart.series.map((item) => ({
+    name: item.name,
+    type: 'scatter',
+    symbolSize: 12,
+    emphasis: { focus: 'item', scale: 1.4 },
+    data: item.data.flatMap((datum, index) => {
+      if (!isRecord(datum)) return []
+      return [{
+        name: text(datum.label ?? datum.node, `#${index + 1}`),
+        value: [number(datum.x), number(datum.y ?? datum.value ?? datum.score)],
+      }]
+    }),
+  }))
+  return {
+    ...base(animation),
+    tooltip: {
+      trigger: 'item',
+      formatter: (parameter: { name?: unknown; value?: unknown }) => {
+        const value = Array.isArray(parameter.value) ? parameter.value : []
+        return `<strong>${escapeHtml(parameter.name)}</strong><br/>${escapeHtml(xLabel)}：${formatMetric(value[0])}<br/>${escapeHtml(yLabel)}：${formatMetric(value[1])}`
+      },
+    },
+    grid: { left: 56, right: 28, top: 36, bottom: 54 },
+    xAxis: { type: 'value', name: xLabel, nameGap: 6, nameTextStyle: { color: '#6b6459', fontSize: 12 }, axisLabel: { color: '#6b6459' }, splitLine: { lineStyle: { color: '#e3ded2' } } },
+    yAxis: { type: 'value', name: yLabel, nameGap: 10, nameTextStyle: { color: '#6b6459', fontSize: 12, align: 'left' }, axisLabel: { color: '#6b6459' }, splitLine: { lineStyle: { color: '#e3ded2' } } },
     series,
   }
 }
@@ -109,5 +159,6 @@ export function chartOptions(chart: RunChart, animation: boolean): Record<string
   if (chart.type === 'heatmap') return heatmap(chart, animation)
   if (chart.type === 'timeline') return timeline(chart, animation)
   if (chart.type === 'gauge') return gauge(chart, animation)
+  if (chart.type === 'scatter') return nodeScatter(chart, animation)
   return standard(chart, animation)
 }

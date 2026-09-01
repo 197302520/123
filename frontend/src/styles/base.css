@@ -390,6 +390,9 @@ th, td { max-width: 24rem; padding: .58rem .85rem; border-bottom: 1px solid var(
 th { white-space: nowrap; }
 td { overflow-wrap: anywhere; }
 th { background: var(--surface-soft); font-weight: 600; color: #33433c; }
+th.sortable { cursor: pointer; user-select: none; }
+th.sortable:hover { color: var(--brand-deep); }
+th .sort-mark { margin-left: .35rem; font-size: .7rem; color: var(--ink-soft); }
 tbody tr:hover { background: var(--brand-soft); }
 .chart-grid, .overlay-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .chart-grid figure, .overlay-grid figure { margin: 0; }

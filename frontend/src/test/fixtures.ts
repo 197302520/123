@@ -50,6 +50,7 @@ export const completedResult: RunResult = {
   charts: [{
     key: 'ranking',
     type: 'bar',
+    title: '度中心性排名（全部节点，从高到低）',
     series: [{ name: '度中心性', data: [{ x: 'b', y: 1 }, { x: 'a', y: 0.5 }] }],
   }],
   warnings: ['孤立节点不会贡献连接。'],

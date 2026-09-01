@@ -13,12 +13,42 @@ describe('real result rendering', () => {
     render(ResultsPanel, { props: { result: completedResult }, global: { stubs } })
 
     expect(screen.getByRole('table', { name: '节点中心性' })).toHaveTextContent('0.5')
-    expect(screen.getByTitle('原始字段名：node')).toHaveTextContent('节点')
-    expect(screen.getByTitle('原始字段名：value')).toHaveTextContent('数值')
+    expect(screen.getByTitle('原始字段名：node；点击排序')).toHaveTextContent('节点')
+    expect(screen.getByTitle('原始字段名：value；点击排序')).toHaveTextContent('数值')
     expect(screen.getByRole('img', { name: '结果图表：ranking' })).toBeVisible()
+    expect(screen.getByText('度中心性排名（全部节点，从高到低） · 柱状图')).toBeVisible()
     expect(screen.getByRole('img', { name: '结果网络叠加图' })).toBeVisible()
     expect(screen.getByRole('alert')).toHaveTextContent('孤立节点不会贡献连接。')
     expect(screen.getByText('graph-hash')).toBeVisible()
+  })
+
+  test('sorts a table by the clicked header, first click descending, second ascending', async () => {
+    const user = (await import('@testing-library/user-event')).default.setup()
+    const result = {
+      ...completedResult,
+      tables: [{
+        key: 'nodes',
+        name: 'HITS 枢纽-权威',
+        columns: ['node', 'hub', 'authority'],
+        rows: [
+          { node: 'ARG', hub: 0.2, authority: 0.1 },
+          { node: 'ENG', hub: 0.05, authority: 0.84 },
+          { node: 'CHN', hub: 0.01, authority: 0.02 },
+        ],
+      }],
+    }
+    render(ResultsPanel, { props: { result }, global: { stubs } })
+    const table = screen.getByRole('table', { name: 'HITS 枢纽-权威' })
+
+    await user.click(screen.getByTitle('原始字段名：authority；点击排序'))
+    let rows = table.querySelectorAll('tbody tr')
+    expect(rows[0]).toHaveTextContent('ENG')
+    expect(rows[2]).toHaveTextContent('CHN')
+
+    await user.click(screen.getByTitle('原始字段名：authority；点击排序'))
+    rows = table.querySelectorAll('tbody tr')
+    expect(rows[0]).toHaveTextContent('CHN')
+    expect(rows[2]).toHaveTextContent('ENG')
   })
 
   test('renders an explicit empty result instead of an empty panel', () => {
